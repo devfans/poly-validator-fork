@@ -8,13 +8,14 @@ import (
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/boltdb/bolt"
+	"poly-bridge/basedef"
 )
 
 var BUCKET = []byte("poly-validator")
 
 type ChainConfig struct {
 	ChainId        uint64
-	StartHeight    int64
+	StartHeight    uint64
 	ProxyContracts []string
 	CCMContract    string
 	Nodes          []string
@@ -24,17 +25,17 @@ func (c *ChainConfig) HeightKey() []byte {
 	return []byte(fmt.Sprintf("height-%v", c.ChainId))
 }
 
-func (c *ChainConfig) ReadHeight(db *bolt.DB) (int64, error) {
+func (c *ChainConfig) ReadHeight(db *bolt.DB) (uint64, error) {
 	var height int
 	err := db.View(func(tx *bolt.Tx) error {
 		v := tx.Bucket(BUCKET).Get(c.HeightKey())
 		height, _ = strconv.Atoi(string(v))
 		return nil
 	})
-	return int64(height), err
+	return uint64(height), err
 }
 
-func (c ChainConfig) WriteHeight(db *bolt.DB, height int64) error {
+func (c ChainConfig) WriteHeight(db *bolt.DB, height uint64) error {
 	logs.Info("Commit block chain %v height %v", c.ChainId, height)
 	return db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(BUCKET).Put(c.HeightKey(), []byte(strconv.Itoa(int(height))))
@@ -49,13 +50,14 @@ type DstTx struct {
 	From       string
 	To         string
 	SrcTx      string
+	PolyTx     string
 	DstTx      string
 	SrcChainId uint64
 	DstChainId uint64
 	DstAsset   string
 	Amount     *big.Int
 	DstProxy   string
-	DstHeight  int64
+	DstHeight  uint64
 	sig        chan struct{}
 }
 
@@ -63,7 +65,7 @@ func (tx *DstTx) Sink(chans map[uint64]chan *DstTx) {
 	tx.sig = make(chan struct{})
 	ch, ok := chans[tx.SrcChainId]
 	if !ok {
-		logs.Error("Missing chain validator for %v", tx.SrcChainId)
+		logs.Error("Missing chain validator for %v %v", tx.SrcChainId, *tx)
 	} else {
 		ch <- tx
 	}
@@ -79,16 +81,16 @@ func (tx *DstTx) Wait() {
 
 type ChainValidator interface {
 	Setup(*ChainConfig) error
-	Scan(int64) ([]*DstTx, error)
+	Scan(uint64) ([]*DstTx, error)
 	Validate(*DstTx) error
-	LatestHeight() (int64, error)
+	LatestHeight() (uint64, error)
 }
 
 type Runner struct {
 	Validator ChainValidator
 	In        chan *DstTx
 	buf       chan *DstTx
-	height    int64
+	height    uint64
 	conf      *ChainConfig
 	db        *bolt.DB
 }
@@ -96,8 +98,14 @@ type Runner struct {
 func NewRunner(cfg *ChainConfig, db *bolt.DB) *Runner {
 	buf := make(chan *DstTx, 100)
 	in := make(chan *DstTx, 100)
+	var v ChainValidator
+	switch cfg.ChainId {
+	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID:
+		v = new(EthValidator)
+	}
+
 	return &Runner{
-		Validator: nil,
+		Validator: v,
 		In:        in,
 		buf:       buf,
 		conf:      cfg,
@@ -145,7 +153,7 @@ func (r *Runner) RunChecks(chans map[uint64]chan *DstTx) error {
 }
 
 func (r *Runner) commitChecks() {
-	update := make(chan int64, 10)
+	update := make(chan uint64, 10)
 	update <- r.height
 
 	go func() {
@@ -176,7 +184,7 @@ func (r *Runner) commitChecks() {
 	}
 }
 
-func (r *Runner) WaitBlockHeight(height int64) {
+func (r *Runner) WaitBlockHeight(height uint64) {
 	for {
 		h, err := r.Validator.LatestHeight()
 		if err != nil {
@@ -192,10 +200,9 @@ func (r *Runner) WaitBlockHeight(height int64) {
 }
 
 func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
-	var latest int64
 	height := r.height
 	for {
-		latest = r.WaitBlockHeight(height)
+		r.WaitBlockHeight(height)
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
 		txs, err := r.Validator.Scan(height)
 		if err == nil {

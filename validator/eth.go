@@ -2,20 +2,16 @@ package validator
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
 	"poly-bridge/chainsdk"
 	"poly-bridge/go_abi/eccm_abi"
 	"poly-bridge/go_abi/lock_proxy_abi"
-	"strings"
 
+	"github.com/beego/beego/v2/core/logs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-)
-
-const (
-	_eth_crosschainlock   = "CrossChainLockEvent"
-	_eth_crosschainunlock = "CrossChainUnlockEvent"
-	_eth_lock             = "LockEvent"
-	_eth_unlock           = "UnlockEvent"
 )
 
 type EthValidator struct {
@@ -23,6 +19,10 @@ type EthValidator struct {
 	conf  *ChainConfig
 	proxy []*lock_proxy_abi.LockProxy
 	ccm   *eccm_abi.EthCrossChainManager
+}
+
+func (v *EthValidator) LatestHeight() (uint64, error) {
+	return v.sdk.GetLatestHeight()
 }
 
 func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
@@ -39,8 +39,8 @@ func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
 	return
 }
 
-func (v *EthValidator) Scan(height int64) (txs []*DstTx, err error) {
-	h := uint64(height)
+func (v *EthValidator) Scan(height uint64) (txs []*DstTx, err error) {
+	h := height
 	opt := &bind.FilterOpts{
 		Start:   h,
 		End:     &h,
@@ -52,10 +52,16 @@ func (v *EthValidator) Scan(height int64) (txs []*DstTx, err error) {
 	}
 
 	unlocks := map[string]DstTx{}
-	tx := []*DstTx{}
+	txs = []*DstTx{}
 	for ccmUnlocks.Next() {
 		evt := ccmUnlocks.Event
-		// unlocks[evt]
+		hash := evt.Raw.TxHash.String()[2:]
+		unlocks[hash] = DstTx{
+			SrcChainId: evt.FromChainID,
+			SrcTx:      string(evt.FromChainTxHash),
+			PolyTx:     string(evt.CrossChainTxHash),
+			DstHeight:  evt.Raw.BlockNumber,
+		}
 	}
 
 	for _, p := range v.proxy {
@@ -71,6 +77,14 @@ func (v *EthValidator) Scan(height int64) (txs []*DstTx, err error) {
 				DstAsset: strings.ToLower(evt.ToAssetHash.String()[2:]),
 				To:       strings.ToLower(evt.ToAddress.String()[2:]),
 			}
+			ccmTx, ok := unlocks[tx.DstTx]
+			if ok {
+				tx.SrcChainId = ccmTx.SrcChainId
+				tx.SrcTx = ccmTx.SrcTx
+				tx.PolyTx = ccmTx.PolyTx
+				tx.DstHeight = ccmTx.DstHeight
+			}
+			txs = append(txs, tx)
 		}
 	}
 
@@ -78,5 +92,34 @@ func (v *EthValidator) Scan(height int64) (txs []*DstTx, err error) {
 }
 
 func (v *EthValidator) Validate(tx *DstTx) (err error) {
+	data, err := v.sdk.GetTransactionReceipt(common.HexToHash(tx.SrcTx))
+	if err != nil {
+		return err
+	}
+	height := uint64(data.BlockNumber.Int64())
+	opt := &bind.FilterOpts{
+		Start:   height,
+		End:     &height,
+		Context: context.Background(),
+	}
+
+	for _, p := range v.proxy {
+		locks, err := p.FilterLockEvent(opt)
+		if err != nil {
+			return err
+		}
+		for locks.Next() {
+			evt := locks.Event
+			amount := evt.Amount
+			address := string(evt.ToAddress)
+			chainId := evt.ToChainId
+			asset := string(evt.ToAssetHash)
+			if amount.Cmp(tx.Amount) == 0 && address == tx.To && chainId == tx.DstChainId && asset == tx.DstAsset {
+				logs.Info("Successfully validated tx %s to %s asset %v amount %s", tx.SrcTx, address, asset, amount.String())
+				return nil
+			}
+		}
+	}
+	err = fmt.Errorf("Failed to validate tx %s to %s asset %v amount %s", tx.SrcTx, tx.To, tx.DstAsset, tx.Amount.String())
 	return
 }
