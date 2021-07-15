@@ -102,12 +102,13 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB) (*Runner, error) {
 	switch cfg.ChainId {
 	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID:
 		v = new(EthValidator)
+		logs.Info("Setting up validator %v", *cfg)
 		err := v.Setup(cfg)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to setup validator %w", err)
+			return nil, fmt.Errorf("Failed to setup validator %w %v", err, *cfg)
 		}
 	default:
-		return nil, fmt.Errorf("No validator found")
+		return nil, fmt.Errorf("No validator found %v", *cfg)
 	}
 
 	return &Runner{
@@ -190,7 +191,7 @@ func (r *Runner) commitChecks() {
 	}
 }
 
-func (r *Runner) WaitBlockHeight(height uint64) {
+func (r *Runner) WaitBlockHeight(height uint64) uint64 {
 	for {
 		h, err := r.Validator.LatestHeight()
 		if err != nil {
@@ -198,7 +199,7 @@ func (r *Runner) WaitBlockHeight(height uint64) {
 		} else {
 			logs.Info("Chain %v latest height %v", r.conf.ChainId, h)
 			if h > height {
-				return
+				return h
 			}
 		}
 		time.Sleep(time.Second * 6)
@@ -207,8 +208,11 @@ func (r *Runner) WaitBlockHeight(height uint64) {
 
 func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
+	var latest uint64
 	for {
-		r.WaitBlockHeight(height)
+		if latest <= height {
+			latest = r.WaitBlockHeight(height)
+		}
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
 		txs, err := r.Validator.Scan(height)
 		if err == nil {
