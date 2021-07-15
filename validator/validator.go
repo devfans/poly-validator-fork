@@ -222,6 +222,7 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 				r.buf <- tx
 			}
 			height++
+			time.Sleep(time.Second)
 		} else {
 			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
 			time.Sleep(time.Second * 2)

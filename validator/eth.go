@@ -2,9 +2,11 @@ package validator
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
+	"poly-bridge/basedef"
 	"poly-bridge/chainsdk"
 	"poly-bridge/go_abi/eccm_abi"
 	"poly-bridge/go_abi/lock_proxy_abi"
@@ -58,8 +60,8 @@ func (v *EthValidator) Scan(height uint64) (txs []*DstTx, err error) {
 		hash := evt.Raw.TxHash.String()[2:]
 		unlocks[hash] = DstTx{
 			SrcChainId: evt.FromChainID,
-			SrcTx:      string(evt.FromChainTxHash),
-			PolyTx:     string(evt.CrossChainTxHash),
+			SrcTx:      basedef.HexStringReverse(hex.EncodeToString(evt.FromChainTxHash)),
+			PolyTx:     basedef.HexStringReverse(hex.EncodeToString(evt.CrossChainTxHash)),
 			DstHeight:  evt.Raw.BlockNumber,
 		}
 	}
