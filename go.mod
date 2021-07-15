@@ -3,6 +3,7 @@ module poly-validator
 go 1.15
 
 require (
+	github.com/astaxie/beego v1.12.1
 	github.com/beego/beego/v2 v2.0.1
 	github.com/boltdb/bolt v1.3.1
 	github.com/ethereum/go-ethereum v1.9.15

@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
-	"github.com/urfave/cli/v2"
 	"poly-validator/validator"
+
+	"github.com/astaxie/beego/logs"
+	"github.com/urfave/cli/v2"
 )
 
 func start(c *cli.Context) error {
@@ -31,7 +37,21 @@ func start(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	return new(validator.Listener).Start(config)
+
+	wg := &sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	err = new(validator.Listener).Start(config, ctx, wg)
+	if err != nil {
+		return err
+	}
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	sig := <-sc
+	logs.Info("Validator is exiting with received signal:(%s).", sig.String())
+	cancel()
+	wg.Wait()
+	return nil
 }
 
 func main() {
@@ -53,5 +73,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	<-make(chan bool)
 }

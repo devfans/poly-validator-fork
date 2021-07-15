@@ -1,9 +1,11 @@
 package validator
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	"poly-bridge/basedef"
@@ -302,7 +304,7 @@ func (l *Listener) watch() {
 	}
 }
 
-func (l *Listener) Start(cfg Config) (err error) {
+func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (err error) {
 	PolyCCMContract = cfg.PolyCCMContract
 
 	db, err := bolt.Open("validator.db", 0600, nil)
@@ -339,5 +341,7 @@ func (l *Listener) Start(cfg Config) (err error) {
 			return err
 		}
 	}
+	// TODO sigs
+	<-ctx.Done()
 	return
 }
