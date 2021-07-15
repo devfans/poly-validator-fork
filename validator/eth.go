@@ -114,6 +114,8 @@ func (v *EthValidator) Validate(tx *DstTx) (err error) {
 			address := string(evt.ToAddress)
 			chainId := evt.ToChainId
 			asset := string(evt.ToAssetHash)
+
+			logs.Info("Comparing %v %v %v %v %v", *tx, amount, address, chainId, asset)
 			if amount.Cmp(tx.Amount) == 0 && address == tx.To && chainId == tx.DstChainId && asset == tx.DstAsset {
 				logs.Info("Successfully validated tx %s to %s asset %v amount %s", tx.SrcTx, address, asset, amount.String())
 				return nil

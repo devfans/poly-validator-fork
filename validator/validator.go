@@ -95,13 +95,19 @@ type Runner struct {
 	db        *bolt.DB
 }
 
-func NewRunner(cfg *ChainConfig, db *bolt.DB) *Runner {
+func NewRunner(cfg *ChainConfig, db *bolt.DB) (*Runner, error) {
 	buf := make(chan *DstTx, 100)
 	in := make(chan *DstTx, 100)
 	var v ChainValidator
 	switch cfg.ChainId {
 	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID:
 		v = new(EthValidator)
+		err := v.Setup(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to setup validator %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("No validator found")
 	}
 
 	return &Runner{
@@ -110,7 +116,7 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB) *Runner {
 		buf:       buf,
 		conf:      cfg,
 		db:        db,
-	}
+	}, nil
 }
 
 func (r *Runner) run() error {
@@ -238,8 +244,14 @@ func (l *Listener) Start(cfg Config) (err error) {
 		return err
 	}
 
+	l.validators = map[uint64]*Runner{}
+	l.chans = map[uint64]chan *DstTx{}
+
 	for _, c := range cfg.Chains {
-		r := NewRunner(c, db)
+		r, err := NewRunner(c, db)
+		if err != nil {
+			return err
+		}
 		l.chans[c.ChainId] = r.In
 		l.validators[c.ChainId] = r
 	}

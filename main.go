@@ -53,4 +53,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	<-make(chan bool)
 }
