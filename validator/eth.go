@@ -30,6 +30,7 @@ func (v *EthValidator) LatestHeight() (uint64, error) {
 func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
 	v.sdk = chainsdk.NewEthereumSdkPro(cfg.Nodes, 5, cfg.ChainId)
+
 	for _, address := range v.conf.ProxyContracts {
 		contract, err := lock_proxy_abi.NewLockProxy(common.HexToAddress(address), v.sdk.GetClient())
 		if err != nil {
