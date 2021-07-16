@@ -1,10 +1,14 @@
 package validator
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +30,7 @@ import (
 
 var BUCKET = []byte("poly-validator")
 var PolyCCMContract string
+var DingUrl string
 
 type ChainConfig struct {
 	ChainId        uint64
@@ -58,6 +63,7 @@ func (c ChainConfig) WriteHeight(db *bolt.DB, height uint64) error {
 
 type Config struct {
 	PolyNodes       []string
+	DingUrl         string
 	PolyCCMContract string
 	Chains          []*ChainConfig
 }
@@ -376,14 +382,43 @@ type Listener struct {
 	outputs    chan *Output
 }
 
+func (l *Listener) postDing(o *Output, count int) {
+	title := fmt.Sprintf("Suspicious unlock No. %d", count)
+	body := fmt.Sprintf(
+		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v",
+		title,
+		o.Amount.String(),
+		o.DstAsset,
+		o.To,
+		o.DstChainId,
+		o.PolyTx,
+		o.DstTx,
+	)
+
+	btns := []map[string]string{}
+	err := PostDingCard(title, body, btns)
+	if err != nil {
+		logs.Error("Post dingtalk error %s", err)
+	}
+}
+
 func (l *Listener) watch() {
+	ticker := time.NewTicker(time.Second)
+	c := 0
 	for o := range l.outputs {
+		c++
 		logs.Error("!!!!!!! Alarm(%v): %v", o.Error, *o.DstTx)
+		select {
+		case <-ticker.C:
+			l.postDing(o, c)
+		default:
+		}
 	}
 }
 
 func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (err error) {
 	PolyCCMContract = cfg.PolyCCMContract
+	DingUrl = cfg.DingUrl
 
 	db, err := bolt.Open(".validator.db", 0600, nil)
 	if err != nil {
@@ -422,4 +457,38 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (e
 	// TODO sigs
 	<-ctx.Done()
 	return
+}
+
+func PostDingCard(title, body string, btns interface{}) error {
+	payload := map[string]interface{}{}
+	payload["msgtype"] = "actionCard"
+	card := map[string]interface{}{}
+	card["title"] = title
+	card["text"] = body
+	card["hideAvatar"] = 0
+	card["btns"] = btns
+	payload["actionCard"] = card
+	return postDing(payload)
+}
+
+func postDing(payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", DingUrl, bytes.NewBuffer(data))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	logs.Info("PostDing response Body:", string(respBody))
+	return nil
 }
