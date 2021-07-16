@@ -137,7 +137,7 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *chainsdk.PolySDKPro, outputs
 
 	var v ChainValidator
 	switch cfg.ChainId {
-	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID:
+	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID:
 		v = new(EthValidator)
 		logs.Info("Setting up validator %v", *cfg)
 		err := v.Setup(cfg)
