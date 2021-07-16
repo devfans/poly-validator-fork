@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -264,12 +265,12 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					tx.Method = merkleValue.MakeTxParam.Method
 					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
 					dstAsset, _ := des.NextVarBytes()
-					asset := ecom.BytesToAddress(dstAsset).Hex()
+					asset := strings.ToLower(ecom.BytesToAddress(dstAsset[2:]).Hex())
 					to, _ := des.NextVarBytes()
-					address := ecom.BytesToAddress(to).Hex()
+					address := strings.ToLower(ecom.BytesToAddress(to[2:]).Hex())
 					amount, _ := des.NextBytes(32)
 					value := new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
-					if address == tx.To && asset == tx.DstAsset && value.Cmp(tx.Amount) == 0 {
+					if address == strings.ToLower(tx.To) && asset == strings.ToLower(tx.DstAsset) && value.Cmp(tx.Amount) == 0 {
 						logs.Info("Successfully validated %s | %s | %s \n %s %s %s", tx.SrcTx, tx.PolyTx, tx.DstTx, asset, address, value.String())
 						return
 					}
@@ -361,7 +362,7 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 				}
 			}
 			height++
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond)
 		} else {
 			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
 			time.Sleep(time.Second * 2)
