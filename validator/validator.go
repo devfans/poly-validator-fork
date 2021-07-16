@@ -265,9 +265,9 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					tx.Method = merkleValue.MakeTxParam.Method
 					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
 					dstAsset, _ := des.NextVarBytes()
-					asset := strings.ToLower(ecom.BytesToAddress(dstAsset[2:]).Hex())
+					asset := strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
 					to, _ := des.NextVarBytes()
-					address := strings.ToLower(ecom.BytesToAddress(to[2:]).Hex())
+					address := strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
 					amount, _ := des.NextBytes(32)
 					value := new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
 					if address == strings.ToLower(tx.To) && asset == strings.ToLower(tx.DstAsset) && value.Cmp(tx.Amount) == 0 {
