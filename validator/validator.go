@@ -87,6 +87,7 @@ type DstTx struct {
 	Amount     *big.Int
 	DstProxy   string
 	DstHeight  uint64
+	Mark       bool
 	sig        chan struct{}
 }
 
@@ -230,7 +231,9 @@ func (r *Runner) commitChecks() {
 	}()
 
 	for tx := range r.buf {
-		tx.Wait()
+		if !tx.Mark {
+			tx.Wait()
+		}
 		r.height = tx.DstHeight
 		update <- tx.DstHeight
 	}
@@ -366,6 +369,10 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 					// tx.Sink(chans)
 					r.buf <- tx
 				}
+			}
+			if len(txs) == 0 && height%10 == 0 {
+				tx := &DstTx{DstHeight: height, Mark: true}
+				r.buf <- tx
 			}
 			height++
 			time.Sleep(time.Millisecond)
