@@ -392,14 +392,15 @@ type Listener struct {
 func (l *Listener) postDing(o *Output, count int) {
 	title := fmt.Sprintf("Suspicious unlock No. %d", count)
 	body := fmt.Sprintf(
-		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v",
+		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v\n err %v",
 		title,
 		o.Amount.String(),
 		o.DstAsset,
 		o.To,
 		o.DstChainId,
 		o.PolyTx,
-		o.DstTx,
+		o.DstTx.DstTx,
+		o.Error,
 	)
 
 	btns := []map[string]string{}
@@ -410,16 +411,12 @@ func (l *Listener) postDing(o *Output, count int) {
 }
 
 func (l *Listener) watch() {
-	ticker := time.NewTicker(time.Second)
 	c := 0
 	for o := range l.outputs {
 		c++
 		logs.Error("!!!!!!! Alarm(%v): %v", o.Error, *o.DstTx)
-		select {
-		case <-ticker.C:
-			l.postDing(o, c)
-		default:
-		}
+		l.postDing(o, c)
+		time.Sleep(time.Second)
 	}
 }
 

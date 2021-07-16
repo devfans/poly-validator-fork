@@ -75,10 +75,11 @@ func (v *EthValidator) Scan(height uint64) (txs []*DstTx, err error) {
 		for unlockEvents.Next() {
 			evt := unlockEvents.Event
 			tx := &DstTx{
-				Amount:   evt.Amount,
-				DstTx:    evt.Raw.TxHash.String()[2:],
-				DstAsset: strings.ToLower(evt.ToAssetHash.String()[2:]),
-				To:       strings.ToLower(evt.ToAddress.String()[2:]),
+				Amount:     evt.Amount,
+				DstTx:      evt.Raw.TxHash.String()[2:],
+				DstAsset:   strings.ToLower(evt.ToAssetHash.String()[2:]),
+				To:         strings.ToLower(evt.ToAddress.String()[2:]),
+				DstChainId: v.conf.ChainId,
 			}
 			ccmTx, ok := unlocks[tx.DstTx]
 			if ok {
