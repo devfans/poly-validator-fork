@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -11,7 +12,11 @@ import (
 	"poly-bridge/basedef"
 	"poly-bridge/chainsdk"
 
+	ecom "github.com/ethereum/go-ethereum/common"
 	"github.com/polynetwork/poly-go-sdk/common"
+	pcom "github.com/polynetwork/poly/common"
+	"github.com/polynetwork/poly/core/types"
+	ccom "github.com/polynetwork/poly/native/service/cross_chain_manager/common"
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/boltdb/bolt"
@@ -64,6 +69,8 @@ type DstTx struct {
 	From       string
 	To         string
 	SrcTx      string
+	SrcIndex   string
+	Method     string
 	PolyTx     string
 	DstTx      string
 	SrcChainId uint64
@@ -231,6 +238,61 @@ func (r *Runner) WaitBlockHeight(height uint64) uint64 {
 	}
 }
 
+func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
+	k, err := hex.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("Invalid key hex %s err %v", key, err)
+	}
+
+	var raw []byte
+	for c := 10; c > 0; c-- {
+		raw, err = r.poly.GetStorage(tx.PolyTx, k)
+		if err == nil && raw != nil {
+			des := pcom.NewZeroCopySource(raw)
+			merkleValue := new(ccom.ToMerkleValue)
+			err = merkleValue.Deserialization(des)
+			if err == nil {
+				if merkleValue.FromChainID == tx.SrcChainId && merkleValue.MakeTxParam != nil {
+					logs.Info("Found merkle value for poly tx %s %v %v", tx.PolyTx, *merkleValue, *merkleValue.MakeTxParam)
+					tx.SrcTx = hex.EncodeToString(merkleValue.MakeTxParam.TxHash)
+					tx.Method = merkleValue.MakeTxParam.Method
+					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
+					dstAsset, ok := des.NextVarBytes()
+					logs.Info("dstAsset %v %v", ecom.BytesToAddress(dstAsset).Hex(), ok)
+					to, ok := des.NextVarBytes()
+					logs.Info("to  %v %v", ecom.BytesToAddress(to).Hex(), ok)
+					amount, ok := des.NextBytes(32)
+					logs.Info("amount %x %v", amount, ok)
+				}
+				err = fmt.Errorf("Invalid source chain id in merkle value %v %v", merkleValue.FromChainID, tx.SrcChainId)
+			}
+		} else {
+			logs.Error("Failed attempt to get poly tx merkle for %s err %w", tx.PolyTx, err)
+			time.Sleep(time.Second)
+		}
+	}
+	err = fmt.Errorf("Failed to fetch poly merkle tx for %s %w", tx.PolyTx, err)
+	logs.Error("%v", err)
+	return
+
+}
+
+func (r *Runner) polyTxCheck(tx *DstTx) (err error) {
+	var ptx *types.Transaction
+	for c := 10; c > 0; c-- {
+		ptx, err = r.poly.GetTransaction(tx.PolyTx)
+		if err == nil && ptx != nil {
+			return
+		} else {
+			logs.Error("Failed attempt to get poly tx for %s err %w", tx.PolyTx, err)
+			time.Sleep(time.Second)
+		}
+	}
+	err = fmt.Errorf("Failed to fetch poly tx for %s %w", tx.PolyTx, err)
+	logs.Error("%v", err)
+	return
+}
+
 func (r *Runner) polyCheck(tx *DstTx) (err error) {
 	var event *common.SmartContactEvent
 	for c := 10; c > 0; c-- {
@@ -245,11 +307,12 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 						srcChain := uint64(states[1].(float64))
 						switch srcChain {
 						case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.O3_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID:
-							tx.SrcTx = states[3].(string)
+							tx.SrcIndex = states[3].(string)
 						default:
-							tx.SrcTx = basedef.HexStringReverse(states[3].(string))
+							tx.SrcIndex = basedef.HexStringReverse(states[3].(string))
 						}
-						return
+						key := states[4].(string)
+						return r.polyMerkleCheck(tx, key)
 					}
 				}
 			}
