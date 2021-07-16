@@ -275,8 +275,9 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					}
 					err = fmt.Errorf("Diff poly %s dst %s\n amount %s | %s\n to %s | %s\n asset %s | %s\n",
 						tx.PolyTx, tx.DstTx, value.String(), tx.Amount.String(), address, tx.To, asset, tx.DstAsset)
+				} else {
+					err = fmt.Errorf("Invalid source chain id in merkle value %v %v", merkleValue.FromChainID, tx.SrcChainId)
 				}
-				err = fmt.Errorf("Invalid source chain id in merkle value %v %v", merkleValue.FromChainID, tx.SrcChainId)
 			}
 		} else {
 			logs.Error("Failed attempt to get poly tx merkle for %s err %w", tx.PolyTx, err)
