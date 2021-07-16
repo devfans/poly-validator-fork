@@ -17,6 +17,7 @@ import (
 	pcom "github.com/polynetwork/poly/common"
 	"github.com/polynetwork/poly/core/types"
 	ccom "github.com/polynetwork/poly/native/service/cross_chain_manager/common"
+	"github.com/polynetwork/poly/native/service/utils"
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/boltdb/bolt"
@@ -246,7 +247,7 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 
 	var raw []byte
 	for c := 10; c > 0; c-- {
-		raw, err = r.poly.GetStorage(tx.PolyTx, k)
+		raw, err = r.poly.GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
 		if err == nil && raw != nil {
 			des := pcom.NewZeroCopySource(raw)
 			merkleValue := new(ccom.ToMerkleValue)
@@ -303,7 +304,7 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 					states := notify.States.([]interface{})
 					contractMethod, _ := states[0].(string)
 					logs.Info("poly tx: %s, tx hash: %s", tx.PolyTx, event.TxHash)
-					if len(states) >= 4 && (contractMethod == "makeProof" || contractMethod == "btcTxToRelay") {
+					if len(states) > 4 && (contractMethod == "makeProof" || contractMethod == "btcTxToRelay") {
 						srcChain := uint64(states[1].(float64))
 						switch srcChain {
 						case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.O3_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID:
@@ -311,7 +312,7 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 						default:
 							tx.SrcIndex = basedef.HexStringReverse(states[3].(string))
 						}
-						key := states[4].(string)
+						key := states[5].(string)
 						return r.polyMerkleCheck(tx, key)
 					}
 				}
@@ -370,7 +371,7 @@ func (l *Listener) watch() {
 func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (err error) {
 	PolyCCMContract = cfg.PolyCCMContract
 
-	db, err := bolt.Open("validator.db", 0600, nil)
+	db, err := bolt.Open(".validator.db", 0600, nil)
 	if err != nil {
 		return err
 	}
