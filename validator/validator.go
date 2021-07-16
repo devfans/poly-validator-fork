@@ -83,6 +83,11 @@ type DstTx struct {
 	sig        chan struct{}
 }
 
+func (tx *DstTx) Finish() {
+	tx.sig = make(chan struct{})
+	close(tx.sig)
+}
+
 func (tx *DstTx) Sink(chans map[uint64]chan *DstTx) {
 	tx.sig = make(chan struct{})
 	ch, ok := chans[tx.SrcChainId]
@@ -258,12 +263,18 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					tx.SrcTx = hex.EncodeToString(merkleValue.MakeTxParam.TxHash)
 					tx.Method = merkleValue.MakeTxParam.Method
 					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
-					dstAsset, ok := des.NextVarBytes()
-					logs.Info("dstAsset %v %v", ecom.BytesToAddress(dstAsset).Hex(), ok)
-					to, ok := des.NextVarBytes()
-					logs.Info("to  %v %v", ecom.BytesToAddress(to).Hex(), ok)
-					amount, ok := des.NextBytes(32)
-					logs.Info("amount %x %v", amount, ok)
+					dstAsset, _ := des.NextVarBytes()
+					asset := ecom.BytesToAddress(dstAsset).Hex()
+					to, _ := des.NextVarBytes()
+					address := ecom.BytesToAddress(to).Hex()
+					amount, _ := des.NextBytes(32)
+					value := new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+					if address == tx.To && asset == tx.DstAsset && value.Cmp(tx.Amount) == 0 {
+						logs.Info("Successfully validated %s | %s | %s \n %s %s %s", tx.SrcTx, tx.PolyTx, tx.DstTx, asset, address, value.String())
+						return
+					}
+					err = fmt.Errorf("Diff poly %s dst %s\n amount %s | %s\n to %s | %s\n asset %s | %s\n",
+						tx.PolyTx, tx.DstTx, value.String(), tx.Amount.String(), address, tx.To, asset, tx.DstAsset)
 				}
 				err = fmt.Errorf("Invalid source chain id in merkle value %v %v", merkleValue.FromChainID, tx.SrcChainId)
 			}
@@ -343,7 +354,8 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 				if err != nil {
 					r.outputs <- &Output{DstTx: tx, Error: err}
 				} else {
-					tx.Sink(chans)
+					tx.Finish()
+					// tx.Sink(chans)
 					r.buf <- tx
 				}
 			}
