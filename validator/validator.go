@@ -28,9 +28,13 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-var BUCKET = []byte("poly-validator")
-var PolyCCMContract string
-var DingUrl string
+var (
+	BUCKET      = []byte("poly-validator")
+	BLOCK_DEFER = uint64(5)
+
+	PolyCCMContract string
+	DingUrl         string
+)
 
 type ChainConfig struct {
 	ChainId        uint64
@@ -251,7 +255,7 @@ func (r *Runner) WaitBlockHeight(height uint64) uint64 {
 			logs.Error("Failed to get latest height for chain %v", r.conf.ChainId)
 		} else {
 			logs.Info("Chain %v latest height %v", r.conf.ChainId, h)
-			if h > height {
+			if h > height+BLOCK_DEFER {
 				return h
 			}
 		}
@@ -376,7 +380,7 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
 	for {
-		if latest <= height {
+		if latest <= height+BLOCK_DEFER {
 			latest = r.WaitBlockHeight(height)
 		}
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
