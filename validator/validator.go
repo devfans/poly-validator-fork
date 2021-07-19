@@ -282,12 +282,13 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					var asset, address string
 					var value *big.Int
 					if tx.SrcChainId == 5 { // Switcheo
-						amount, _ := des.NextBytes(32)
-						value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+						des.NextVarBytes()
 						dstAsset, _ := des.NextVarBytes()
 						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
 						to, _ := des.NextVarBytes()
-						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(to)).Hex()), "0x")
+						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
+						amount, _ := des.NextBytes(32)
+						value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
 					} else {
 						dstAsset, _ := des.NextVarBytes()
 						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
