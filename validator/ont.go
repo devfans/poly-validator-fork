@@ -77,7 +77,7 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 					unlocks = append(unlocks, &DstTx{
 						Amount:     amount,
 						DstTx:      evt.TxHash,
-						DstAsset:   basedef.HexStringReverse(states[1].(string)),
+						DstAsset:   states[1].(string),
 						To:         states[2].(string),
 						DstChainId: v.conf.ChainId,
 					})
