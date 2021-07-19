@@ -279,12 +279,13 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					tx.Method = merkleValue.MakeTxParam.Method
 					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
 
-					var asset, address string
+					var asset, assetReversed, address string
 					var value *big.Int
 					if tx.SrcChainId == 5 { // Switcheo
 						des.NextVarBytes()
 						dstAsset, _ := des.NextVarBytes()
-						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
+						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
+						assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
 						to, _ := des.NextVarBytes()
 						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
 						amount, _ := des.NextBytes(32)
@@ -292,13 +293,16 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 					} else {
 						dstAsset, _ := des.NextVarBytes()
 						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
+						assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
 						to, _ := des.NextVarBytes()
 						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
 						amount, _ := des.NextBytes(32)
 						value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
 					}
 
-					if address == strings.ToLower(tx.To) && asset == strings.ToLower(tx.DstAsset) && value.Cmp(tx.Amount) == 0 {
+					if address == strings.ToLower(tx.To) &&
+						(asset == strings.ToLower(tx.DstAsset) || assetReversed == strings.ToLower(tx.DstAsset)) &&
+						value.Cmp(tx.Amount) == 0 {
 						logs.Info("Successfully validated %s | %s | %s \n %s %s %s", tx.SrcTx, tx.PolyTx, tx.DstTx, asset, address, value.String())
 						return
 					}
@@ -381,7 +385,7 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 			logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
 			for _, tx := range txs {
 				if tx.PolyTx == "" {
-					r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain ", tx.DstChainId)}
+					r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain %d", tx.DstChainId)}
 				} else {
 					err := r.polyCheck(tx)
 					if err != nil {
