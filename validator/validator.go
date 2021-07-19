@@ -274,16 +274,29 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 			err = merkleValue.Deserialization(des)
 			if err == nil {
 				if merkleValue.FromChainID == tx.SrcChainId && merkleValue.MakeTxParam != nil {
-					logs.Info("Found merkle value for poly tx %s %v %v", tx.PolyTx, *merkleValue, *merkleValue.MakeTxParam)
+					logs.Info("Found merkle value for poly tx %s", tx.PolyTx)
 					tx.SrcTx = hex.EncodeToString(merkleValue.MakeTxParam.TxHash)
 					tx.Method = merkleValue.MakeTxParam.Method
 					des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
-					dstAsset, _ := des.NextVarBytes()
-					asset := strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
-					to, _ := des.NextVarBytes()
-					address := strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
-					amount, _ := des.NextBytes(32)
-					value := new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+
+					var asset, address string
+					var value *big.Int
+					if tx.SrcChainId == 5 { // Switcheo
+						amount, _ := des.NextBytes(32)
+						value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+						dstAsset, _ := des.NextVarBytes()
+						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
+						to, _ := des.NextVarBytes()
+						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(to)).Hex()), "0x")
+					} else {
+						dstAsset, _ := des.NextVarBytes()
+						asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
+						to, _ := des.NextVarBytes()
+						address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
+						amount, _ := des.NextBytes(32)
+						value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+					}
+
 					if address == strings.ToLower(tx.To) && asset == strings.ToLower(tx.DstAsset) && value.Cmp(tx.Amount) == 0 {
 						logs.Info("Successfully validated %s | %s | %s \n %s %s %s", tx.SrcTx, tx.PolyTx, tx.DstTx, asset, address, value.String())
 						return
@@ -401,7 +414,7 @@ type Listener struct {
 func (l *Listener) postDing(o *Output, count int) {
 	title := fmt.Sprintf("Suspicious unlock No. %d", count)
 	body := fmt.Sprintf(
-		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v\n err %v",
+		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v\n- err %v",
 		title,
 		o.Amount.String(),
 		o.DstAsset,
