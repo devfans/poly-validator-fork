@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"encoding/hex"
 	"math/big"
 
 	"poly-bridge/basedef"
@@ -64,8 +65,9 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 				}
 			} else if v.isProxyContract(notify.ContractAddress) {
 				states := notify.States.([]interface{})
-				method, _ := states[0].(string)
-				if method == ONT_PROXY_UNLOCK {
+				m, _ := states[0].(string)
+				method, _ := hex.DecodeString(m)
+				if string(method) == ONT_PROXY_UNLOCK {
 					amount, _ := new(big.Int).SetString(basedef.HexStringReverse(states[3].(string)), 16)
 					if amount == nil {
 						logs.Error("Invalid dst unlock amount %v", states[3])
