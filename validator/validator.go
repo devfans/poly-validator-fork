@@ -140,13 +140,16 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *chainsdk.PolySDKPro, outputs
 	switch cfg.ChainId {
 	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID:
 		v = new(EthValidator)
-		logs.Info("Setting up validator %v", *cfg)
-		err := v.Setup(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to setup validator %w %v", err, *cfg)
-		}
+	case basedef.NEO_CROSSCHAIN_ID:
+		v = new(NeoValidator)
 	default:
 		return nil, fmt.Errorf("No validator found %v", *cfg)
+	}
+
+	logs.Info("Setting up validator %v", *cfg)
+	err := v.Setup(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to setup validator %w %v", err, *cfg)
 	}
 
 	return &Runner{
@@ -361,13 +364,17 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 		if err == nil {
 			logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
 			for _, tx := range txs {
-				err := r.polyCheck(tx)
-				if err != nil {
-					r.outputs <- &Output{DstTx: tx, Error: err}
+				if tx.PolyTx == "" {
+					r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain ", tx.DstChainId)}
 				} else {
-					tx.Finish()
-					// tx.Sink(chans)
-					r.buf <- tx
+					err := r.polyCheck(tx)
+					if err != nil {
+						r.outputs <- &Output{DstTx: tx, Error: err}
+					} else {
+						tx.Finish()
+						// tx.Sink(chans)
+						r.buf <- tx
+					}
 				}
 			}
 			if len(txs) == 0 && height%10 == 0 {
