@@ -142,6 +142,8 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *chainsdk.PolySDKPro, outputs
 		v = new(EthValidator)
 	case basedef.NEO_CROSSCHAIN_ID:
 		v = new(NeoValidator)
+	case basedef.ONT_CROSSCHAIN_ID:
+		v = new(OntValidator)
 	default:
 		return nil, fmt.Errorf("No validator found %v", *cfg)
 	}

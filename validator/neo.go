@@ -101,7 +101,7 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 			}
 		}
 
-		if len(unlocks) != 0 {
+		if len(unlocks) != 1 {
 			// If more than one unlock in one tx, alarm it
 			ccmUnlock = nil
 		}
