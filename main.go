@@ -40,7 +40,7 @@ func start(c *cli.Context) error {
 
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
-	err = new(validator.Listener).Start(config, ctx, wg)
+	err = new(validator.Listener).Start(config, ctx, wg, c.Int("chain"))
 	if err != nil {
 		return err
 	}
@@ -65,6 +65,10 @@ func main() {
 				Name:  "config",
 				Value: "config.json",
 				Usage: "configuration file",
+			},
+			&cli.IntFlag{
+				Name:  "chain",
+				Usage: "chain to monitor, default: all cchains specified in config file",
 			},
 		},
 	}

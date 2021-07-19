@@ -429,7 +429,7 @@ func (l *Listener) watch() {
 	}
 }
 
-func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (err error) {
+func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, chain int) (err error) {
 	PolyCCMContract = cfg.PolyCCMContract
 	DingUrl = cfg.DingUrl
 
@@ -454,6 +454,9 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup) (e
 	go l.watch()
 
 	for _, c := range cfg.Chains {
+		if chain != 0 && uint64(chain) != c.ChainId {
+			continue
+		}
 		r, err := NewRunner(c, db, poly, l.outputs)
 		if err != nil {
 			return err
