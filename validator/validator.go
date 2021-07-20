@@ -376,6 +376,28 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 	return
 }
 
+func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
+	for c := 8; c > 0; c-- {
+		txs, err = r.Validator.Scan(height)
+		if err != nil {
+			return
+		}
+		valid := true
+		for _, tx := range txs {
+			if tx.PolyTx == "" {
+				logs.Error("Invalid poly tx(%d) for chain %s dst tx %s", c, tx.DstChainId, tx.DstTx)
+				valid = false
+				break
+			}
+		}
+		if valid {
+			return
+		}
+		time.Sleep(time.Second * 8)
+	}
+	return
+}
+
 func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
@@ -384,7 +406,7 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 			latest = r.WaitBlockHeight(height)
 		}
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
-		txs, err := r.Validator.Scan(height)
+		txs, err := r.scan(height)
 		if err == nil {
 			logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
 			for _, tx := range txs {
