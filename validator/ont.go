@@ -20,11 +20,10 @@ package validator
 import (
 	"encoding/hex"
 	"math/big"
-
-	"poly-bridge/basedef"
-	"poly-bridge/chainsdk"
+	"time"
 
 	"github.com/beego/beego/v2/core/logs"
+	"github.com/polynetwork/bridge-common/chains/ont"
 )
 
 const (
@@ -33,17 +32,17 @@ const (
 )
 
 type OntValidator struct {
-	sdk  *chainsdk.OntologySdkPro
+	sdk  *ont.SDK
 	conf *ChainConfig
 }
 
 func (v *OntValidator) LatestHeight() (uint64, error) {
-	return v.sdk.GetCurrentBlockHeight()
+	return v.sdk.Node().GetLatestHeight()
 }
 
 func (v *OntValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
-	v.sdk = chainsdk.NewOntologySdkPro(cfg.Nodes, 10, cfg.ChainId)
+	v.sdk, err = ont.NewSDK(cfg.ChainId, cfg.Nodes, time.Minute, 1)
 	return
 }
 
@@ -57,7 +56,7 @@ func (v *OntValidator) isProxyContract(contract string) bool {
 }
 
 func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
-	events, err := v.sdk.GetSmartContractEventByBlock(uint32(height))
+	events, err := v.sdk.Node().GetSmartContractEventByBlock(uint32(height))
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +70,7 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 				if method == ONT_CCM_UNLOCK {
 					evt := &DstTx{
 						SrcChainId: uint64(states[3].(float64)),
-						PolyTx:     basedef.HexStringReverse(states[1].(string)),
+						PolyTx:     HexStringReverse(states[1].(string)),
 						DstHeight:  height,
 					}
 					if ccmUnlock == nil {
@@ -85,7 +84,7 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 				m, _ := states[0].(string)
 				method, _ := hex.DecodeString(m)
 				if string(method) == ONT_PROXY_UNLOCK {
-					amount, _ := new(big.Int).SetString(basedef.HexStringReverse(states[3].(string)), 16)
+					amount, _ := new(big.Int).SetString(HexStringReverse(states[3].(string)), 16)
 					if amount == nil {
 						logs.Error("Invalid dst unlock amount %v", states[3])
 						amount = big.NewInt(0)

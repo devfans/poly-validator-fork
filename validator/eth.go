@@ -22,40 +22,42 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
-
-	"poly-bridge/basedef"
-	"poly-bridge/chainsdk"
-	"poly-bridge/go_abi/eccm_abi"
-	"poly-bridge/go_abi/lock_proxy_abi"
+	"time"
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	eccm "github.com/polynetwork/bridge-common/abi/eccm_abi"
+	lockproxy "github.com/polynetwork/bridge-common/abi/lock_proxy_abi"
+	"github.com/polynetwork/bridge-common/chains/eth"
 )
 
 type EthValidator struct {
-	sdk   *chainsdk.EthereumSdkPro
+	sdk   *eth.SDK
 	conf  *ChainConfig
-	proxy []*lock_proxy_abi.LockProxy
-	ccm   *eccm_abi.EthCrossChainManager
+	proxy []*lockproxy.LockProxy
+	ccm   *eccm.EthCrossChainManager
 }
 
 func (v *EthValidator) LatestHeight() (uint64, error) {
-	return v.sdk.GetLatestHeight()
+	return v.sdk.Node().GetLatestHeight()
 }
 
 func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
-	v.sdk = chainsdk.NewEthereumSdkPro(cfg.Nodes, 5, cfg.ChainId)
+	v.sdk, err = eth.NewSDK(cfg.ChainId, cfg.Nodes, time.Minute, 1)
+	if err != nil {
+		return
+	}
 
 	for _, address := range v.conf.ProxyContracts {
-		contract, err := lock_proxy_abi.NewLockProxy(common.HexToAddress(address), v.sdk.GetClient())
+		contract, err := lockproxy.NewLockProxy(common.HexToAddress(address), v.sdk.Node().Client)
 		if err != nil {
 			return err
 		}
 		v.proxy = append(v.proxy, contract)
 	}
-	v.ccm, err = eccm_abi.NewEthCrossChainManager(common.HexToAddress(v.conf.CCMContract), v.sdk.GetClient())
+	v.ccm, err = eccm.NewEthCrossChainManager(common.HexToAddress(v.conf.CCMContract), v.sdk.Node().Client)
 	return
 }
 
@@ -78,8 +80,8 @@ func (v *EthValidator) Scan(height uint64) (txs []*DstTx, err error) {
 		hash := evt.Raw.TxHash.String()[2:]
 		unlocks[hash] = DstTx{
 			SrcChainId: evt.FromChainID,
-			SrcTx:      basedef.HexStringReverse(hex.EncodeToString(evt.FromChainTxHash)),
-			PolyTx:     basedef.HexStringReverse(hex.EncodeToString(evt.CrossChainTxHash)),
+			SrcTx:      HexStringReverse(hex.EncodeToString(evt.FromChainTxHash)),
+			PolyTx:     HexStringReverse(hex.EncodeToString(evt.CrossChainTxHash)),
 			DstHeight:  evt.Raw.BlockNumber,
 		}
 	}
@@ -113,7 +115,7 @@ func (v *EthValidator) Scan(height uint64) (txs []*DstTx, err error) {
 }
 
 func (v *EthValidator) Validate(tx *DstTx) (err error) {
-	data, err := v.sdk.GetTransactionReceipt(common.HexToHash(tx.SrcTx))
+	data, err := v.sdk.Node().TransactionReceipt(context.Background(), common.HexToHash(tx.SrcTx))
 	if err != nil {
 		return err
 	}

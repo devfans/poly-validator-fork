@@ -18,8 +18,8 @@
 package validator
 
 import (
+	"encoding/hex"
 	"math/big"
-	"poly-bridge/basedef"
 )
 
 func ParseInt(value, ty string) (v *big.Int) {
@@ -27,7 +27,22 @@ func ParseInt(value, ty string) (v *big.Int) {
 	case "Integer":
 		v, _ = new(big.Int).SetString(value, 10)
 	default:
-		v, _ = new(big.Int).SetString(basedef.HexStringReverse(value), 16)
+		v, _ = new(big.Int).SetString(HexStringReverse(value), 16)
 	}
 	return
+}
+
+func HexReverse(arr []byte) []byte {
+	l := len(arr)
+	x := make([]byte, 0)
+	for i := l - 1; i >= 0; i-- {
+		x = append(x, arr[i])
+	}
+	return x
+}
+
+func HexStringReverse(value string) string {
+	aa, _ := hex.DecodeString(value)
+	bb := HexReverse(aa)
+	return hex.EncodeToString(bb)
 }

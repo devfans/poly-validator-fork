@@ -31,10 +31,9 @@ import (
 	"sync"
 	"time"
 
-	"poly-bridge/basedef"
-	"poly-bridge/chainsdk"
-
 	ecom "github.com/ethereum/go-ethereum/common"
+	"github.com/polynetwork/bridge-common/base"
+	"github.com/polynetwork/bridge-common/chains/poly"
 	"github.com/polynetwork/poly-go-sdk/common"
 	pcom "github.com/polynetwork/poly/common"
 	"github.com/polynetwork/poly/core/types"
@@ -144,7 +143,7 @@ type ChainValidator interface {
 
 type Runner struct {
 	Validator ChainValidator
-	poly      *chainsdk.PolySDKPro
+	poly      *poly.SDK
 	In        chan *DstTx
 	buf       chan *DstTx
 	height    uint64
@@ -153,17 +152,17 @@ type Runner struct {
 	outputs   chan *Output
 }
 
-func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *chainsdk.PolySDKPro, outputs chan *Output) (*Runner, error) {
+func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan *Output) (*Runner, error) {
 	buf := make(chan *DstTx, 100)
 	in := make(chan *DstTx, 100)
 
 	var v ChainValidator
 	switch cfg.ChainId {
-	case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID:
+	case base.ETH, base.HECO, base.BSC, base.OK:
 		v = new(EthValidator)
-	case basedef.NEO_CROSSCHAIN_ID:
+	case base.NEO:
 		v = new(NeoValidator)
-	case basedef.ONT_CROSSCHAIN_ID:
+	case base.ONT:
 		v = new(OntValidator)
 	default:
 		return nil, fmt.Errorf("No validator found %v", *cfg)
@@ -288,7 +287,7 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 
 	var raw []byte
 	for c := 10; c > 0; c-- {
-		raw, err = r.poly.GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
+		raw, err = r.poly.Node().GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
 		if err == nil && raw != nil {
 			des := pcom.NewZeroCopySource(raw)
 			merkleValue := new(ccom.ToMerkleValue)
@@ -347,7 +346,7 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 func (r *Runner) polyTxCheck(tx *DstTx) (err error) {
 	var ptx *types.Transaction
 	for c := 10; c > 0; c-- {
-		ptx, err = r.poly.GetTransaction(tx.PolyTx)
+		ptx, err = r.poly.Node().GetTransaction(tx.PolyTx)
 		if err == nil && ptx != nil {
 			return
 		} else {
@@ -363,7 +362,7 @@ func (r *Runner) polyTxCheck(tx *DstTx) (err error) {
 func (r *Runner) polyCheck(tx *DstTx) (err error) {
 	var event *common.SmartContactEvent
 	for c := 10; c > 0; c-- {
-		event, err = r.poly.GetSmartContractEvent(tx.PolyTx)
+		event, err = r.poly.Node().GetSmartContractEvent(tx.PolyTx)
 		if err == nil && event != nil {
 			for _, notify := range event.Notify {
 				if notify.ContractAddress == PolyCCMContract {
@@ -373,10 +372,10 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 					if len(states) > 4 && (contractMethod == "makeProof" || contractMethod == "btcTxToRelay") {
 						srcChain := uint64(states[1].(float64))
 						switch srcChain {
-						case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.O3_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID:
+						case base.ETH, base.BSC, base.O3, base.OK, base.HECO:
 							tx.SrcIndex = states[3].(string)
 						default:
-							tx.SrcIndex = basedef.HexStringReverse(states[3].(string))
+							tx.SrcIndex = HexStringReverse(states[3].(string))
 						}
 						key := states[5].(string)
 						return r.polyMerkleCheck(tx, key)
@@ -507,7 +506,11 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, ch
 		return err
 	}
 
-	poly := chainsdk.NewPolySDKPro(cfg.PolyNodes, 10, 0)
+	poly, err := poly.NewSDK(base.POLY, cfg.PolyNodes, time.Minute, 1)
+	if err != nil {
+		return err
+	}
+
 	l.validators = map[uint64]*Runner{}
 	l.chans = map[uint64]chan *DstTx{}
 	l.outputs = make(chan *Output, 1000)
@@ -570,10 +573,10 @@ func postDing(payload interface{}) error {
 	return nil
 }
 
-func ScanPolyProofs(height uint64, poly *chainsdk.PolySDKPro, ccmContract string) (err error) {
+func ScanPolyProofs(height uint64, poly *poly.SDK, ccmContract string) (err error) {
 	PolyCCMContract = ccmContract
 
-	events, err := poly.GetSmartContractEventByBlock(height)
+	events, err := poly.Node().GetSmartContractEventByBlock(uint32(height))
 	if err != nil {
 		panic(err)
 	}
@@ -586,10 +589,10 @@ func ScanPolyProofs(height uint64, poly *chainsdk.PolySDKPro, ccmContract string
 					srcChain := uint64(states[1].(float64))
 					var srcIndex string
 					switch srcChain {
-					case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.O3_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID:
+					case base.ETH, base.BSC, base.O3, base.OK, base.HECO:
 						srcIndex = states[3].(string)
 					default:
-						srcIndex = basedef.HexStringReverse(states[3].(string))
+						srcIndex = HexStringReverse(states[3].(string))
 					}
 					key := states[5].(string)
 					logs.Info("Tx hash: %s, index %s, chain %v, %s", event.TxHash, srcIndex, srcChain, key)
@@ -604,13 +607,13 @@ func ScanPolyProofs(height uint64, poly *chainsdk.PolySDKPro, ccmContract string
 	return
 }
 
-func polyMerkleCheck(poly *chainsdk.PolySDKPro, key string) error {
+func polyMerkleCheck(poly *poly.SDK, key string) error {
 	k, err := hex.DecodeString(key)
 	if err != nil {
 		return fmt.Errorf("Invalid key hex %s err %v", key, err)
 	}
 
-	raw, err := poly.GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
+	raw, err := poly.Node().GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
 	if err == nil && raw != nil {
 		des := pcom.NewZeroCopySource(raw)
 		merkleValue := new(ccom.ToMerkleValue)

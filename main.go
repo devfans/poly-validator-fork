@@ -25,13 +25,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"poly-bridge/chainsdk"
 	"sync"
 	"syscall"
 
 	"poly-validator/validator"
 
 	"github.com/beego/beego/v2/core/logs"
+	"github.com/polynetwork/bridge-common/chains/poly"
 	"github.com/urfave/cli/v2"
 )
 
@@ -86,7 +86,10 @@ func fetchMerkle(c *cli.Context) error {
 		panic(err)
 	}
 
-	poly := chainsdk.NewPolySDKPro(config.PolyNodes, 10, 0)
+	poly, err := poly.NewSDK(0, config.PolyNodes, 10, 0)
+	if err != nil {
+		return err
+	}
 	height := c.Int("poly_height")
 	return validator.ScanPolyProofs(uint64(height), poly, config.PolyCCMContract)
 }

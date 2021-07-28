@@ -19,12 +19,13 @@ package validator
 
 import (
 	"encoding/hex"
+	"fmt"
 	"math/big"
-
-	"poly-bridge/basedef"
-	"poly-bridge/chainsdk"
+	"time"
 
 	"github.com/beego/beego/v2/core/logs"
+	"github.com/joeqian10/neo-gogogo/rpc/models"
+	"github.com/polynetwork/bridge-common/chains/neo"
 )
 
 var neoProxyUnlocks = map[string]bool{
@@ -35,17 +36,17 @@ var neoProxyUnlocks = map[string]bool{
 const NEO_CCM_UNLOCK = "CrossChainUnlockEvent"
 
 type NeoValidator struct {
-	sdk  *chainsdk.NeoSdkPro
+	sdk  *neo.SDK
 	conf *ChainConfig
 }
 
 func (v *NeoValidator) LatestHeight() (uint64, error) {
-	return v.sdk.GetBlockCount()
+	return v.sdk.Node().GetLatestHeight()
 }
 
 func (v *NeoValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
-	v.sdk = chainsdk.NewNeoSdkPro(cfg.Nodes, 10, cfg.ChainId)
+	v.sdk, err = neo.NewSDK(cfg.ChainId, cfg.Nodes, time.Minute, 1)
 	return
 }
 
@@ -58,8 +59,24 @@ func (v *NeoValidator) isProxyContract(contract string) bool {
 	return false
 }
 
+func (v *NeoValidator) GetBlockByIndex(height uint64) (*models.RpcBlock, error) {
+	res := v.sdk.Node().GetBlockByIndex(uint32(height))
+	if res.ErrorResponse.Error.Message != "" {
+		return nil, fmt.Errorf("%s", res.ErrorResponse.Error.Message)
+	}
+	return &res.Result, nil
+}
+
+func (v *NeoValidator) GetApplicationLog(txId string) (*models.RpcApplicationLog, error) {
+	res := v.sdk.Node().GetApplicationLog(txId)
+	if res.ErrorResponse.Error.Message != "" {
+		return nil, fmt.Errorf("%s", res.ErrorResponse.Error.Message)
+	}
+	return &res.Result, nil
+}
+
 func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
-	block, err := v.sdk.GetBlockByIndex(height)
+	block, err := v.GetBlockByIndex(height)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +84,7 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 		if tx.Type != "InvocationTransaction" {
 			continue
 		}
-		appLog, err := v.sdk.GetApplicationLog(tx.Txid)
+		appLog, err := v.GetApplicationLog(tx.Txid)
 		if err != nil || appLog == nil {
 			continue
 		}
@@ -88,7 +105,7 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 
 						evt := &DstTx{
 							SrcChainId: dstChain,
-							PolyTx:     basedef.HexStringReverse(notify.State.Value[3].Value),
+							PolyTx:     HexStringReverse(notify.State.Value[3].Value),
 							DstHeight:  height,
 						}
 						if ccmUnlock == nil {
@@ -109,7 +126,7 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 						unlocks = append(unlocks, &DstTx{
 							Amount:     amount,
 							DstTx:      tx.Txid[2:],
-							DstAsset:   basedef.HexStringReverse(notify.State.Value[1].Value),
+							DstAsset:   HexStringReverse(notify.State.Value[1].Value),
 							To:         notify.State.Value[2].Value,
 							DstChainId: v.conf.ChainId,
 						})

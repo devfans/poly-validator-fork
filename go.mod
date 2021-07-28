@@ -6,10 +6,11 @@ require (
 	github.com/beego/beego/v2 v2.0.1
 	github.com/boltdb/bolt v1.3.1
 	github.com/ethereum/go-ethereum v1.9.15
+	github.com/joeqian10/neo-gogogo v0.0.0-20201214075916-44b70d175579
+	github.com/polynetwork/bridge-common v0.0.2
 	github.com/polynetwork/poly v1.3.1
-	github.com/polynetwork/poly-go-sdk v0.0.0-20210114035303-84e1615f4ad4
+	github.com/polynetwork/poly-go-sdk v0.0.0-20210114120411-3dcba035134f
 	github.com/urfave/cli/v2 v2.3.0
-	poly-bridge v0.0.0-00010101000000-000000000000
 )
 
-replace poly-bridge => github.com/polynetwork/poly-bridge v0.0.0-20210716034345-dab3980cfaef
+replace github.com/polynetwork/bridge-common v0.0.2 => ../bridge-common
