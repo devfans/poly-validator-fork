@@ -569,3 +569,91 @@ func postDing(payload interface{}) error {
 	logs.Info("PostDing response Body:", string(respBody))
 	return nil
 }
+
+func ScanPolyProofs(height uint64, poly *chainsdk.PolySDKPro, ccmContract string) (err error) {
+	PolyCCMContract = ccmContract
+
+	events, err := poly.GetSmartContractEventByBlock(height)
+	if err != nil {
+		panic(err)
+	}
+	for _, event := range events {
+		for _, notify := range event.Notify {
+			if notify.ContractAddress == PolyCCMContract {
+				states := notify.States.([]interface{})
+				contractMethod, _ := states[0].(string)
+				if len(states) > 4 && (contractMethod == "makeProof" || contractMethod == "btcTxToRelay") {
+					srcChain := uint64(states[1].(float64))
+					var srcIndex string
+					switch srcChain {
+					case basedef.ETHEREUM_CROSSCHAIN_ID, basedef.BSC_CROSSCHAIN_ID, basedef.O3_CROSSCHAIN_ID, basedef.OK_CROSSCHAIN_ID, basedef.HECO_CROSSCHAIN_ID:
+						srcIndex = states[3].(string)
+					default:
+						srcIndex = basedef.HexStringReverse(states[3].(string))
+					}
+					key := states[5].(string)
+					logs.Info("Tx hash: %s, index %s, chain %v, %s", event.TxHash, srcIndex, srcChain, key)
+					err = polyMerkleCheck(poly, key)
+					if err != nil {
+						logs.Error("polyMerkleCheck err %v", err)
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
+func polyMerkleCheck(poly *chainsdk.PolySDKPro, key string) error {
+	k, err := hex.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("Invalid key hex %s err %v", key, err)
+	}
+
+	raw, err := poly.GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
+	if err == nil && raw != nil {
+		des := pcom.NewZeroCopySource(raw)
+		merkleValue := new(ccom.ToMerkleValue)
+		err = merkleValue.Deserialization(des)
+		if err == nil {
+			logs.Info("Found Merkle value: \n %+v", *merkleValue)
+			if merkleValue.MakeTxParam != nil {
+				logs.Info("Parsed merkle value param: \n%+v", *(merkleValue.MakeTxParam))
+				srcTx := hex.EncodeToString(merkleValue.MakeTxParam.TxHash)
+				method := merkleValue.MakeTxParam.Method
+				des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
+
+				var asset, assetReversed, address string
+				var value *big.Int
+				if merkleValue.FromChainID == 5 { // Switcheo
+					des.NextVarBytes()
+					dstAsset, _ := des.NextVarBytes()
+					asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
+					assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
+					to, _ := des.NextVarBytes()
+					address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
+					amount, _ := des.NextBytes(32)
+					value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+				} else {
+					dstAsset, _ := des.NextVarBytes()
+					asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
+					assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
+					to, _ := des.NextVarBytes()
+					address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
+					amount, _ := des.NextBytes(32)
+					value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
+				}
+				data := map[string]interface{}{
+					"asset":         asset,
+					"assetReversed": assetReversed,
+					"to":            address,
+					"amount":        value.String(),
+					"srcTx":         srcTx,
+					"method":        method,
+				}
+				logs.Info("Value:\n %+v", data)
+			}
+		}
+	}
+	return nil
+}

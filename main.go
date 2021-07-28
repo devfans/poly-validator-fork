@@ -20,10 +20,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
+	"poly-bridge/chainsdk"
 	"sync"
 	"syscall"
 
@@ -33,7 +35,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func start(c *cli.Context) error {
+func parseConfig(c *cli.Context) (*validator.Config, error) {
 	file := c.String("config")
 	if file == "" {
 		file = "./config.json"
@@ -41,23 +43,30 @@ func start(c *cli.Context) error {
 
 	fo, err := os.Open(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer fo.Close()
 	bytes, err := ioutil.ReadAll(fo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var config validator.Config
 	err = json.Unmarshal(bytes, &config)
-
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("Failed to parse config file %w", err)
+	}
+	return &config, nil
+}
+
+func start(c *cli.Context) error {
+	config, err := parseConfig(c)
+	if err != nil {
+		panic(err)
 	}
 
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
-	err = new(validator.Listener).Start(config, ctx, wg, c.Int("chain"))
+	err = new(validator.Listener).Start(*config, ctx, wg, c.Int("chain"))
 	if err != nil {
 		return err
 	}
@@ -69,6 +78,17 @@ func start(c *cli.Context) error {
 	cancel()
 	wg.Wait()
 	return nil
+}
+
+func fetchMerkle(c *cli.Context) error {
+	config, err := parseConfig(c)
+	if err != nil {
+		panic(err)
+	}
+
+	poly := chainsdk.NewPolySDKPro(config.PolyNodes, 10, 0)
+	height := c.Int("poly_height")
+	return validator.ScanPolyProofs(uint64(height), poly, config.PolyCCMContract)
 }
 
 func main() {
@@ -86,6 +106,20 @@ func main() {
 			&cli.IntFlag{
 				Name:  "chain",
 				Usage: "chain to monitor, default: all cchains specified in config file",
+			},
+		},
+		Commands: []*cli.Command{
+			{
+				Name:    "poly_merkle",
+				Aliases: []string{"m"},
+				Usage:   "fetch merkle values from poly",
+				Action:  fetchMerkle,
+				Flags: []cli.Flag{
+					&cli.IntFlag{
+						Name:  "poly_height",
+						Usage: "Poly block height to scan against",
+					},
+				},
 			},
 		},
 	}
