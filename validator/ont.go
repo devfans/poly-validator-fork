@@ -24,6 +24,7 @@ import (
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/polynetwork/bridge-common/chains/ont"
+	"github.com/polynetwork/bridge-common/tools"
 )
 
 const (
@@ -32,8 +33,9 @@ const (
 )
 
 type OntValidator struct {
-	sdk  *ont.SDK
-	conf *ChainConfig
+	sdk   *ont.SDK
+	conf  *ChainConfig
+	cache []*DstTx // temp block cache
 }
 
 func (v *OntValidator) LatestHeight() (uint64, error) {
@@ -56,11 +58,21 @@ func (v *OntValidator) isProxyContract(contract string) bool {
 }
 
 func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
-	events, err := v.sdk.Node().GetSmartContractEventByBlock(uint32(height))
+	return v.cache, nil
+}
+
+func (v *OntValidator) ScanEvents(height uint64, ch chan tools.CardEvent) (err error) {
+	v.cache = nil
+
+	smEvents, err := v.sdk.Node().GetSmartContractEventByBlock(uint32(height))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for _, evt := range events {
+
+	txs := []*DstTx{}
+	events := []tools.CardEvent{}
+
+	for _, evt := range smEvents {
 		var ccmUnlock *DstTx
 		unlocks := []*DstTx{}
 		for _, notify := range evt.Notify {
@@ -97,6 +109,44 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 						To:         states[2].(string),
 						DstChainId: v.conf.ChainId,
 					})
+				} else {
+					var ev tools.CardEvent
+					switch string(method) {
+					case "TransferOwnershipEvent":
+						ev = &SetManagerProxyEvent{
+							TxHash:   evt.TxHash,
+							Contract: notify.ContractAddress,
+							ChainId:  v.conf.ChainId,
+							/*
+								Manager:  notify.State.Value[1].Value,
+								Operator: notify.State.Value[0].Value,
+							*/
+						}
+					case "BindProxyHashEvent":
+						ev = &BindProxyEvent{
+							TxHash:   evt.TxHash,
+							Contract: notify.ContractAddress,
+							ChainId:  v.conf.ChainId,
+							/*
+								ToChainId: toChainId,
+								ToProxy:   notify.State.Value[1].Value,
+							*/
+						}
+					case "BindAssetHashEvent":
+						ev = &BindAssetEvent{
+							TxHash:   evt.TxHash,
+							Contract: notify.ContractAddress,
+							ChainId:  v.conf.ChainId,
+							/*
+								FromAsset: notify.State.Value[0].Value,
+								ToChainId: toChainId,
+								Asset:     notify.State.Value[2].Value,
+							*/
+						}
+					}
+					if ev != nil {
+						events = append(events, ev)
+					}
 				}
 			}
 		}
@@ -112,6 +162,12 @@ func (v *OntValidator) Scan(height uint64) (txs []*DstTx, err error) {
 			}
 			txs = append(txs, evt)
 		}
+	}
+
+	// Cache for scan call
+	v.cache = txs
+	for _, ev := range events {
+		ch <- ev
 	}
 	return
 }

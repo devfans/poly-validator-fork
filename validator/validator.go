@@ -34,6 +34,8 @@ import (
 	ecom "github.com/ethereum/go-ethereum/common"
 	"github.com/polynetwork/bridge-common/base"
 	"github.com/polynetwork/bridge-common/chains/poly"
+	"github.com/polynetwork/bridge-common/metrics"
+	"github.com/polynetwork/bridge-common/tools"
 	"github.com/polynetwork/poly-go-sdk/common"
 	pcom "github.com/polynetwork/poly/common"
 	"github.com/polynetwork/poly/core/types"
@@ -86,11 +88,8 @@ type Config struct {
 	DingUrl         string
 	PolyCCMContract string
 	Chains          []*ChainConfig
-}
-
-type Output struct {
-	*DstTx
-	Error error
+	MetricHost      string
+	MetricPort      int
 }
 
 type DstTx struct {
@@ -137,6 +136,7 @@ func (tx *DstTx) Wait() {
 type ChainValidator interface {
 	Setup(*ChainConfig) error
 	Scan(uint64) ([]*DstTx, error)
+	ScanEvents(uint64, chan tools.CardEvent) error
 	Validate(*DstTx) error
 	LatestHeight() (uint64, error)
 }
@@ -149,10 +149,10 @@ type Runner struct {
 	height    uint64
 	conf      *ChainConfig
 	db        *bolt.DB
-	outputs   chan *Output
+	outputs   chan tools.CardEvent
 }
 
-func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan *Output) (*Runner, error) {
+func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools.CardEvent) (*Runner, error) {
 	buf := make(chan *DstTx, 100)
 	in := make(chan *DstTx, 100)
 
@@ -392,6 +392,10 @@ func (r *Runner) polyCheck(tx *DstTx) (err error) {
 	return
 }
 
+func (r *Runner) ScanEvents(height uint64) error {
+	return r.Validator.ScanEvents(height, r.outputs)
+}
+
 func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
 	for c := 8; c > 0; c-- {
 		txs, err = r.Validator.Scan(height)
@@ -422,30 +426,36 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 			latest = r.WaitBlockHeight(height)
 		}
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
-		txs, err := r.scan(height)
+		err := r.ScanEvents(height)
 		if err == nil {
-			logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
-			for _, tx := range txs {
-				if tx.PolyTx == "" {
-					r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain %d", tx.DstChainId)}
-				} else {
-					err := r.polyCheck(tx)
-					if err != nil {
-						r.outputs <- &Output{DstTx: tx, Error: err}
+			txs, err := r.scan(height)
+			if err == nil {
+				logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
+				for _, tx := range txs {
+					if tx.PolyTx == "" {
+						r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain %d", tx.DstChainId)}
 					} else {
-						tx.Finish()
-						// tx.Sink(chans)
-						r.buf <- tx
+						err := r.polyCheck(tx)
+						if err != nil {
+							r.outputs <- &Output{DstTx: tx, Error: err}
+						} else {
+							tx.Finish()
+							// tx.Sink(chans)
+							r.buf <- tx
+						}
 					}
 				}
+				if len(txs) == 0 && height%10 == 0 {
+					tx := &DstTx{DstHeight: height, Mark: true}
+					r.buf <- tx
+				}
+				metrics.Record(height, "%d", r.conf.ChainId)
+				height++
+				time.Sleep(time.Millisecond)
 			}
-			if len(txs) == 0 && height%10 == 0 {
-				tx := &DstTx{DstHeight: height, Mark: true}
-				r.buf <- tx
-			}
-			height++
-			time.Sleep(time.Millisecond)
-		} else {
+		}
+
+		if err != nil {
 			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
 			time.Sleep(time.Second * 2)
 		}
@@ -455,36 +465,18 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 type Listener struct {
 	validators map[uint64]*Runner
 	chans      map[uint64]chan *DstTx
-	outputs    chan *Output
-}
-
-func (l *Listener) postDing(o *Output, count int) {
-	title := fmt.Sprintf("Suspicious unlock No. %d", count)
-	body := fmt.Sprintf(
-		"## %s\n- Amount %v\n- Asset %v\n- To %v\n- DstChain %v\n- PolyHash:%v\n- DstHash %v\n- err %v",
-		title,
-		o.Amount.String(),
-		o.DstAsset,
-		o.To,
-		o.DstChainId,
-		o.PolyTx,
-		o.DstTx.DstTx,
-		o.Error,
-	)
-
-	btns := []map[string]string{}
-	err := PostDingCard(title, body, btns)
-	if err != nil {
-		logs.Error("Post dingtalk error %s", err)
-	}
+	outputs    chan tools.CardEvent
 }
 
 func (l *Listener) watch() {
 	c := 0
 	for o := range l.outputs {
 		c++
-		logs.Error("!!!!!!! Alarm(%v): %v", o.Error, *o.DstTx)
-		l.postDing(o, c)
+		logs.Error("!!!!!!! Alarm(%v): %v", c, o)
+		err := tools.PostCardEvent(o)
+		if err != nil {
+			logs.Error("Post dingtalk error %s", err)
+		}
 		time.Sleep(time.Second)
 	}
 }
@@ -513,7 +505,7 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, ch
 
 	l.validators = map[uint64]*Runner{}
 	l.chans = map[uint64]chan *DstTx{}
-	l.outputs = make(chan *Output, 1000)
+	l.outputs = make(chan tools.CardEvent, 1000)
 
 	go l.watch()
 

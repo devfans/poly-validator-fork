@@ -31,7 +31,10 @@ import (
 	"poly-validator/validator"
 
 	"github.com/beego/beego/v2/core/logs"
+	"github.com/beego/beego/v2/server/web"
 	"github.com/polynetwork/bridge-common/chains/poly"
+	"github.com/polynetwork/bridge-common/metrics"
+	"github.com/polynetwork/bridge-common/tools"
 	"github.com/urfave/cli/v2"
 )
 
@@ -63,6 +66,17 @@ func start(c *cli.Context) error {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		// Insert web config
+		web.BConfig.Listen.HTTPAddr = config.MetricHost
+		web.BConfig.Listen.HTTPPort = config.MetricPort
+		web.BConfig.RunMode = "prod"
+		web.BConfig.AppName = "validator"
+		web.Run()
+	}()
+	tools.DingUrl = config.DingUrl
+	metrics.Init("validator")
 
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())

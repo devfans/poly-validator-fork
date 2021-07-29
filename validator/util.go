@@ -19,6 +19,7 @@ package validator
 
 import (
 	"encoding/hex"
+	"fmt"
 	"math/big"
 )
 
@@ -45,4 +46,66 @@ func HexStringReverse(value string) string {
 	aa, _ := hex.DecodeString(value)
 	bb := HexReverse(aa)
 	return hex.EncodeToString(bb)
+}
+
+type Output struct {
+	*DstTx
+	Error error
+}
+
+func (o *Output) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	keys = []string{"Amount", "Asset", "To", "DstChain", "PolyHash", "DstHash", "Error"}
+	values = []interface{}{o.Amount.String(), o.DstAsset, o.To, o.DstChainId, o.PolyTx, o.DstTx.DstTx, o.Error}
+	title = fmt.Sprintf("Suspicious unlock on chain %d", o.DstChainId)
+	return
+}
+
+type SetManagerProxyEvent struct {
+	TxHash   string
+	Contract string
+	ChainId  uint64
+	Manager  string
+	Operator string
+}
+
+func (o *SetManagerProxyEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("Suspicious set manager proxy event on chain %v", o.ChainId)
+	keys = []string{"Hash", "Contract", "ChainId", "New Manager"}
+	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.Manager}
+	return
+}
+
+type BindProxyEvent struct {
+	Contract  string
+	TxHash    string
+	ChainId   uint64
+	ToChainId uint64
+	ToProxy   string
+	Operator  string
+}
+
+func (o *BindProxyEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("Suspicious bind proxy event on chain %v", o.ChainId)
+	keys = []string{"Hash", "Contract", "ChainId", "ToChainId", "ToProxy"}
+	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.ToChainId, o.ToProxy}
+	return
+}
+
+type BindAssetEvent struct {
+	TxHash        string
+	Contract      string
+	ChainId       uint64
+	FromAsset     string
+	FromChainId   string
+	ToChainId     uint64
+	Asset         string
+	InitialAmount *big.Int
+	Operator      string
+}
+
+func (o *BindAssetEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("Suspicious bind asset event on chain %v", o.ChainId)
+	keys = []string{"Hash", "Contract", "ChainId", "FromAsset", "FromChainId", "Asset", "InitialAmount"}
+	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.FromAsset, o.FromChainId, o.Asset, o.InitialAmount}
+	return
 }

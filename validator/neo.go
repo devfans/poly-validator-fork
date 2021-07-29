@@ -26,6 +26,7 @@ import (
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/joeqian10/neo-gogogo/rpc/models"
 	"github.com/polynetwork/bridge-common/chains/neo"
+	"github.com/polynetwork/bridge-common/tools"
 )
 
 var neoProxyUnlocks = map[string]bool{
@@ -36,8 +37,9 @@ var neoProxyUnlocks = map[string]bool{
 const NEO_CCM_UNLOCK = "CrossChainUnlockEvent"
 
 type NeoValidator struct {
-	sdk  *neo.SDK
-	conf *ChainConfig
+	sdk   *neo.SDK
+	conf  *ChainConfig
+	cache []*DstTx // temp block cache
 }
 
 func (v *NeoValidator) LatestHeight() (uint64, error) {
@@ -76,16 +78,29 @@ func (v *NeoValidator) GetApplicationLog(txId string) (*models.RpcApplicationLog
 }
 
 func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
+	return v.cache, nil
+}
+
+func (v *NeoValidator) ScanEvents(height uint64, ch chan tools.CardEvent) (err error) {
+	v.cache = nil
+
 	block, err := v.GetBlockByIndex(height)
 	if err != nil {
-		return nil, err
+		return err
 	}
+
+	txs := []*DstTx{}
+	events := []tools.CardEvent{}
 	for _, tx := range block.Tx {
 		if tx.Type != "InvocationTransaction" {
 			continue
 		}
 		appLog, err := v.GetApplicationLog(tx.Txid)
-		if err != nil || appLog == nil {
+		if err != nil {
+			return err
+		}
+
+		if appLog == nil {
 			continue
 		}
 		var ccmUnlock *DstTx
@@ -130,6 +145,54 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 							To:         notify.State.Value[2].Value,
 							DstChainId: v.conf.ChainId,
 						})
+					} else {
+						var ev tools.CardEvent
+						switch string(method) {
+						case "TransferOwnershipEvent":
+							ev = &SetManagerProxyEvent{
+								TxHash:   tx.Txid[2:],
+								Contract: notify.Contract[2:],
+								ChainId:  v.conf.ChainId,
+								Manager:  notify.State.Value[1].Value,
+								Operator: notify.State.Value[0].Value,
+							}
+						case "BindProxyHashEvent":
+							var toChainId uint64
+							chainId := ParseInt(notify.State.Value[0].Value, notify.State.Value[0].Type)
+							if chainId == nil {
+								logs.Error("Invalid to chain id %v", notify.State.Value[0].Value)
+							} else {
+								toChainId = chainId.Uint64()
+							}
+
+							ev = &BindProxyEvent{
+								TxHash:    tx.Txid[2:],
+								Contract:  notify.Contract[2:],
+								ChainId:   v.conf.ChainId,
+								ToChainId: toChainId,
+								ToProxy:   notify.State.Value[1].Value,
+							}
+						case "BindAssetHashEvent":
+							var toChainId uint64
+							chainId := ParseInt(notify.State.Value[1].Value, notify.State.Value[1].Type)
+							if chainId == nil {
+								logs.Error("Invalid to chain id %v", notify.State.Value[1].Value)
+							} else {
+								toChainId = chainId.Uint64()
+							}
+
+							ev = &BindAssetEvent{
+								TxHash:    tx.Txid[2:],
+								Contract:  notify.Contract[2:],
+								ChainId:   v.conf.ChainId,
+								FromAsset: notify.State.Value[0].Value,
+								ToChainId: toChainId,
+								Asset:     notify.State.Value[2].Value,
+							}
+						}
+						if ev != nil {
+							events = append(events, ev)
+						}
 					}
 				}
 			}
@@ -147,6 +210,11 @@ func (v *NeoValidator) Scan(height uint64) (txs []*DstTx, err error) {
 			}
 			txs = append(txs, evt)
 		}
+	}
+	// Cache for scan call
+	v.cache = txs
+	for _, ev := range events {
+		ch <- ev
 	}
 	return
 }

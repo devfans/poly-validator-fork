@@ -30,6 +30,7 @@ import (
 	eccm "github.com/polynetwork/bridge-common/abi/eccm_abi"
 	lockproxy "github.com/polynetwork/bridge-common/abi/lock_proxy_abi"
 	"github.com/polynetwork/bridge-common/chains/eth"
+	"github.com/polynetwork/bridge-common/tools"
 )
 
 type EthValidator struct {
@@ -37,6 +38,68 @@ type EthValidator struct {
 	conf  *ChainConfig
 	proxy []*lockproxy.LockProxy
 	ccm   *eccm.EthCrossChainManager
+}
+
+func (v *EthValidator) ScanEvents(height uint64, ch chan tools.CardEvent) (err error) {
+	opt := &bind.FilterOpts{
+		Start:   height,
+		End:     &height,
+		Context: context.Background(),
+	}
+
+	events := []tools.CardEvent{}
+	for _, p := range v.proxy {
+		setManagerProxyEvents, err := p.FilterSetManagerProxyEvent(opt)
+		if err != nil {
+			return err
+		}
+		bindProxyEvents, err := p.FilterBindProxyEvent(opt)
+		if err != nil {
+			return err
+		}
+		bindAssetEvents, err := p.FilterBindAssetEvent(opt)
+		if err != nil {
+			return err
+		}
+		for setManagerProxyEvents.Next() {
+			ev := setManagerProxyEvents.Event
+			events = append(events, &SetManagerProxyEvent{
+				TxHash:   ev.Raw.TxHash.String()[2:],
+				Contract: ev.Raw.Address.String(),
+				ChainId:  v.conf.ChainId,
+				Manager:  ev.Manager.String(),
+			})
+		}
+
+		for bindProxyEvents.Next() {
+			ev := bindProxyEvents.Event
+			events = append(events, &BindProxyEvent{
+				TxHash:    ev.Raw.TxHash.String()[2:],
+				Contract:  ev.Raw.Address.String(),
+				ChainId:   v.conf.ChainId,
+				ToChainId: ev.ToChainId,
+				ToProxy:   hex.EncodeToString(ev.TargetProxyHash),
+			})
+		}
+
+		for bindAssetEvents.Next() {
+			ev := bindAssetEvents.Event
+			events = append(events, &BindAssetEvent{
+				TxHash:        ev.Raw.TxHash.String()[2:],
+				Contract:      ev.Raw.Address.String(),
+				ChainId:       v.conf.ChainId,
+				FromAsset:     ev.FromAssetHash.String(),
+				ToChainId:     ev.ToChainId,
+				Asset:         hex.EncodeToString(ev.TargetProxyHash),
+				InitialAmount: ev.InitialAmount,
+			})
+		}
+	}
+
+	for _, ev := range events {
+		ch <- ev
+	}
+	return
 }
 
 func (v *EthValidator) LatestHeight() (uint64, error) {
