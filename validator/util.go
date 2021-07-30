@@ -96,7 +96,6 @@ type BindAssetEvent struct {
 	Contract      string
 	ChainId       uint64
 	FromAsset     string
-	FromChainId   string
 	ToChainId     uint64
 	Asset         string
 	InitialAmount *big.Int
@@ -105,7 +104,7 @@ type BindAssetEvent struct {
 
 func (o *BindAssetEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
 	title = fmt.Sprintf("Suspicious bind asset event on chain %v", o.ChainId)
-	keys = []string{"Hash", "Contract", "ChainId", "FromAsset", "FromChainId", "Asset", "InitialAmount"}
-	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.FromAsset, o.FromChainId, o.Asset, o.InitialAmount}
+	keys = []string{"Hash", "Contract", "ChainId", "FromAsset", "ToChainId", "ToAsset", "InitialAmount"}
+	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.FromAsset, o.ToChainId, o.Asset, o.InitialAmount}
 	return
 }
