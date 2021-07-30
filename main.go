@@ -67,6 +67,9 @@ func start(c *cli.Context) error {
 		panic(err)
 	}
 
+	tools.DingUrl = config.DingUrl
+	metrics.Init("validator")
+
 	go func() {
 		// Insert web config
 		web.BConfig.Listen.HTTPAddr = config.MetricHost
@@ -75,8 +78,6 @@ func start(c *cli.Context) error {
 		web.BConfig.AppName = "validator"
 		web.Run()
 	}()
-	tools.DingUrl = config.DingUrl
-	metrics.Init("validator")
 
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
