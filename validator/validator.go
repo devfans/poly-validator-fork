@@ -158,7 +158,7 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 
 	var v ChainValidator
 	switch cfg.ChainId {
-	case base.ETH, base.HECO, base.BSC, base.OK:
+	case base.ETH, base.HECO, base.BSC, base.OK, base.MATIC:
 		v = new(EthValidator)
 	case base.NEO:
 		v = new(NeoValidator)
