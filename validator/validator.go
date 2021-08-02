@@ -18,14 +18,10 @@
 package validator
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -87,6 +83,7 @@ func (c ChainConfig) WriteHeight(db *bolt.DB, height uint64) error {
 
 type Config struct {
 	PolyNodes       []string
+	StartHeight     uint64
 	DingUrl         string
 	PolyCCMContract string
 	Chains          []*ChainConfig
@@ -168,6 +165,10 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 		v = new(NeoValidator)
 	case base.ONT:
 		v = new(OntValidator)
+	case base.POLY:
+		p := new(PolyValidator)
+		p.SetupSDK(poly)
+		v = p
 	default:
 		return nil, fmt.Errorf("No validator found %v", *cfg)
 	}
@@ -246,9 +247,13 @@ func (r *Runner) RunChecks(chans map[uint64]chan *DstTx) error {
 		}
 	}
 	r.height = height
-	go r.commitChecks()   // height rolling
-	go r.runChecks(chans) // scan dst txs
-	go r.run()            // run src checks for dst txs
+	go r.commitChecks() // height rolling
+	if r.conf.ChainId == base.POLY {
+		go r.runPolyChecks(chans)
+	} else {
+		go r.runChecks(chans) // scan dst txs
+		go r.run()            // run src checks for dst txs
+	}
 	return nil
 }
 
@@ -440,6 +445,30 @@ func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
 	return
 }
 
+func (r *Runner) runPolyChecks(chans map[uint64]chan *DstTx) {
+	height := r.height
+	var latest uint64
+	for {
+		if latest <= height+BLOCK_DEFER {
+			latest = r.WaitBlockHeight(height)
+		}
+		// logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
+		txs, err := r.scan(height)
+		if err == nil {
+			metrics.Record(height, "blocks.%d", r.conf.ChainId)
+			r.tps.Tick(len(txs))
+			r.counter.Tick(height)
+			metrics.Record(r.tps.Tps(), "tps.%d", r.conf.ChainId)
+			metrics.Record(r.counter.BlockTime(), "blocktime.%d", r.conf.ChainId)
+			height++
+			time.Sleep(time.Millisecond)
+		} else {
+			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
+			time.Sleep(time.Second * 2)
+		}
+	}
+}
+
 func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
@@ -553,129 +582,24 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, ch
 			return err
 		}
 	}
+
+	// Poly
+	{
+		c := &ChainConfig{
+			ChainId:     base.POLY,
+			StartHeight: cfg.StartHeight,
+		}
+		r, err := NewRunner(c, db, poly, l.outputs)
+		if err != nil {
+			return err
+		}
+		r.RunChecks(l.chans)
+		if err != nil {
+			return err
+		}
+	}
+
 	// TODO sigs
 	<-ctx.Done()
 	return
-}
-
-func PostDingCard(title, body string, btns interface{}) error {
-	payload := map[string]interface{}{}
-	payload["msgtype"] = "actionCard"
-	card := map[string]interface{}{}
-	card["title"] = title
-	card["text"] = body
-	card["hideAvatar"] = 0
-	card["btns"] = btns
-	payload["actionCard"] = card
-	return postDing(payload)
-}
-
-func postDing(payload interface{}) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest("POST", DingUrl, bytes.NewBuffer(data))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	logs.Info("PostDing response Body:", string(respBody))
-	return nil
-}
-
-func ScanPolyProofs(height uint64, poly *poly.SDK, ccmContract string) (err error) {
-	PolyCCMContract = ccmContract
-
-	events, err := poly.Node().GetSmartContractEventByBlock(uint32(height))
-	if err != nil {
-		panic(err)
-	}
-	for _, event := range events {
-		for _, notify := range event.Notify {
-			if notify.ContractAddress == PolyCCMContract {
-				states := notify.States.([]interface{})
-				contractMethod, _ := states[0].(string)
-				if len(states) > 4 && (contractMethod == "makeProof" || contractMethod == "btcTxToRelay") {
-					srcChain := uint64(states[1].(float64))
-					var srcIndex string
-					switch srcChain {
-					case base.ETH, base.BSC, base.O3, base.OK, base.HECO:
-						srcIndex = states[3].(string)
-					default:
-						srcIndex = HexStringReverse(states[3].(string))
-					}
-					key := states[5].(string)
-					logs.Info("Tx hash: %s, index %s, chain %v, %s", event.TxHash, srcIndex, srcChain, key)
-					err = polyMerkleCheck(poly, key)
-					if err != nil {
-						logs.Error("polyMerkleCheck err %v", err)
-					}
-				}
-			}
-		}
-	}
-	return
-}
-
-func polyMerkleCheck(poly *poly.SDK, key string) error {
-	k, err := hex.DecodeString(key)
-	if err != nil {
-		return fmt.Errorf("Invalid key hex %s err %v", key, err)
-	}
-
-	raw, err := poly.Node().GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
-	if err == nil && raw != nil {
-		des := pcom.NewZeroCopySource(raw)
-		merkleValue := new(ccom.ToMerkleValue)
-		err = merkleValue.Deserialization(des)
-		if err == nil {
-			logs.Info("Found Merkle value: \n %+v", *merkleValue)
-			if merkleValue.MakeTxParam != nil {
-				logs.Info("Parsed merkle value param: \n%+v", *(merkleValue.MakeTxParam))
-				srcTx := hex.EncodeToString(merkleValue.MakeTxParam.TxHash)
-				method := merkleValue.MakeTxParam.Method
-				des = pcom.NewZeroCopySource(merkleValue.MakeTxParam.Args)
-
-				var asset, assetReversed, address string
-				var value *big.Int
-				if merkleValue.FromChainID == 5 { // Switcheo
-					des.NextVarBytes()
-					dstAsset, _ := des.NextVarBytes()
-					asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
-					assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
-					to, _ := des.NextVarBytes()
-					address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
-					amount, _ := des.NextBytes(32)
-					value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
-				} else {
-					dstAsset, _ := des.NextVarBytes()
-					asset = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(dstAsset).Hex()), "0x")
-					assetReversed = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(pcom.ToArrayReverse(dstAsset)).Hex()), "0x")
-					to, _ := des.NextVarBytes()
-					address = strings.TrimPrefix(strings.ToLower(ecom.BytesToAddress(to).Hex()), "0x")
-					amount, _ := des.NextBytes(32)
-					value = new(big.Int).SetBytes(pcom.ToArrayReverse(amount))
-				}
-				data := map[string]interface{}{
-					"asset":         asset,
-					"assetReversed": assetReversed,
-					"to":            address,
-					"amount":        value.String(),
-					"srcTx":         srcTx,
-					"method":        method,
-				}
-				logs.Info("Value:\n %+v", data)
-			}
-		}
-	}
-	return nil
 }

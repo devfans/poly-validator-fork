@@ -106,7 +106,9 @@ func fetchMerkle(c *cli.Context) error {
 		return err
 	}
 	height := c.Int("poly_height")
-	return validator.ScanPolyProofs(uint64(height), poly, config.PolyCCMContract)
+	v := new(validator.PolyValidator)
+	v.SetupSDK(poly)
+	return v.ScanProofs(uint64(height), config.PolyCCMContract)
 }
 
 func main() {
