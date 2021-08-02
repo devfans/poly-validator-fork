@@ -453,7 +453,7 @@ func (r *Runner) runPolyChecks(chans map[uint64]chan *DstTx) {
 			latest = r.WaitBlockHeight(height)
 		}
 		// logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
-		txs, err := r.scan(height)
+		txs, err := r.Validator.Scan(height)
 		if err == nil {
 			metrics.Record(height, "blocks.%d", r.conf.ChainId)
 			r.tps.Tick(len(txs))
