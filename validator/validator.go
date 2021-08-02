@@ -55,11 +55,13 @@ var (
 )
 
 type ChainConfig struct {
-	ChainId        uint64
-	StartHeight    uint64
-	ProxyContracts []string
-	CCMContract    string
-	Nodes          []string
+	ChainId         uint64
+	CounterBlocks   int
+	CounterDuration uint64
+	StartHeight     uint64
+	ProxyContracts  []string
+	CCMContract     string
+	Nodes           []string
 }
 
 func (c *ChainConfig) HeightKey() []byte {
@@ -143,6 +145,8 @@ type ChainValidator interface {
 
 type Runner struct {
 	Validator ChainValidator
+	counter   *tools.BlockCounter
+	tps       *tools.TimedCounter
 	poly      *poly.SDK
 	In        chan *DstTx
 	buf       chan *DstTx
@@ -174,8 +178,26 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 		return nil, fmt.Errorf("Failed to setup validator %w %v", err, *cfg)
 	}
 
+	if cfg.CounterBlocks == 0 {
+		cfg.CounterBlocks = 10
+	}
+	if cfg.CounterDuration == 0 {
+		cfg.CounterDuration = 60
+	}
+
+	tps, err := tools.NewTimedCounter(time.Duration(cfg.CounterDuration) * time.Second)
+	if err != nil {
+		return nil, err
+	}
+	counter, err := tools.NewBlockCounter(cfg.CounterBlocks)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Runner{
 		Validator: v,
+		counter:   counter,
+		tps:       tps,
 		poly:      poly,
 		In:        in,
 		buf:       buf,
@@ -449,7 +471,12 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 					tx := &DstTx{DstHeight: height, Mark: true}
 					r.buf <- tx
 				}
-				metrics.Record(height, "%d", r.conf.ChainId)
+				metrics.Record(height, "blocks.%d", r.conf.ChainId)
+				r.tps.Tick(len(txs))
+				r.counter.Tick(height)
+				metrics.Record(r.tps.Tps(), "tps.%d", r.conf.ChainId)
+				metrics.Record(r.counter.BlockTime(), "blocktime.%d", r.conf.ChainId)
+
 				height++
 				time.Sleep(time.Millisecond)
 			}
