@@ -166,6 +166,10 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 		v = new(NeoValidator)
 	case base.ONT:
 		v = new(OntValidator)
+	case base.O3:
+		v = new(O3Validator)
+	case base.SWITCHEO:
+		v = new(SwitcheoValidator)
 	case base.POLY:
 		p := new(PolyValidator)
 		p.SetupSDK(poly)
@@ -250,8 +254,9 @@ func (r *Runner) RunChecks(chans map[uint64]chan *DstTx) error {
 	}
 	r.height = height
 	go r.commitChecks() // height rolling
-	if r.conf.ChainId == base.POLY {
-		go r.runPolyChecks(chans)
+
+	if r.conf.ChainId == base.POLY || r.conf.ChainId == base.O3 {
+		go r.runSimpleChecks(chans)
 	} else {
 		go r.runChecks(chans) // scan dst txs
 		go r.run()            // run src checks for dst txs
@@ -447,7 +452,7 @@ func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
 	return
 }
 
-func (r *Runner) runPolyChecks(chans map[uint64]chan *DstTx) {
+func (r *Runner) runSimpleChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
 	for {
@@ -457,6 +462,10 @@ func (r *Runner) runPolyChecks(chans map[uint64]chan *DstTx) {
 		// logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
 		txs, err := r.Validator.Scan(height)
 		if err == nil {
+			if height%100 == 0 {
+				tx := &DstTx{DstHeight: height, Mark: true}
+				r.buf <- tx
+			}
 			metrics.Record(height, "blocks.%s", r.Name)
 			r.tps.Tick(len(txs))
 			r.counter.Tick(height)
