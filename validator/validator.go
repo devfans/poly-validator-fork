@@ -151,6 +151,7 @@ type Runner struct {
 	conf      *ChainConfig
 	db        *bolt.DB
 	outputs   chan tools.CardEvent
+	Name      string
 }
 
 func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools.CardEvent) (*Runner, error) {
@@ -205,6 +206,7 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 		conf:      cfg,
 		db:        db,
 		outputs:   outputs,
+		Name:      base.GetChainName(cfg.ChainId),
 	}, nil
 }
 
@@ -455,11 +457,11 @@ func (r *Runner) runPolyChecks(chans map[uint64]chan *DstTx) {
 		// logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
 		txs, err := r.Validator.Scan(height)
 		if err == nil {
-			metrics.Record(height, "blocks.%d", r.conf.ChainId)
+			metrics.Record(height, "blocks.%s", r.Name)
 			r.tps.Tick(len(txs))
 			r.counter.Tick(height)
-			metrics.Record(r.tps.Tps(), "tps.%d", r.conf.ChainId)
-			metrics.Record(r.counter.BlockTime(), "blocktime.%d", r.conf.ChainId)
+			metrics.Record(r.tps.Tps(), "tps.%s", r.Name)
+			metrics.Record(r.counter.BlockTime(), "blocktime.%s", r.Name)
 			height++
 			time.Sleep(time.Millisecond)
 		} else {
@@ -500,11 +502,11 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 					tx := &DstTx{DstHeight: height, Mark: true}
 					r.buf <- tx
 				}
-				metrics.Record(height, "blocks.%d", r.conf.ChainId)
+				metrics.Record(height, "blocks.%s", r.Name)
 				r.tps.Tick(len(txs))
 				r.counter.Tick(height)
-				metrics.Record(r.tps.Tps(), "tps.%d", r.conf.ChainId)
-				metrics.Record(r.counter.BlockTime(), "blocktime.%d", r.conf.ChainId)
+				metrics.Record(r.tps.Tps(), "tps.%s", r.Name)
+				metrics.Record(r.counter.BlockTime(), "blocktime.%s", r.Name)
 
 				height++
 				time.Sleep(time.Millisecond)

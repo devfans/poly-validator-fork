@@ -157,6 +157,8 @@ github.com/devfans/bridge-common v0.0.5 h1:4a9AXqtSY5tFoXn5jgcQmqGnDEnm2ELXWfa/U
 github.com/devfans/bridge-common v0.0.5/go.mod h1:sq5lqZOUAvOU/CMKiNs6YJmgAbuQ5vwrrBENf2Lg1OU=
 github.com/devfans/bridge-common v0.0.6 h1:LScPqAOtN5TqvRDMBXdsJuz7B4ygqchKHkAM6WYopwI=
 github.com/devfans/bridge-common v0.0.6/go.mod h1:sq5lqZOUAvOU/CMKiNs6YJmgAbuQ5vwrrBENf2Lg1OU=
+github.com/devfans/bridge-common v0.0.7 h1:Wl2IdU0YSVYPP+fCFskKtffSDI5dRCYSO+xkAatmxww=
+github.com/devfans/bridge-common v0.0.7/go.mod h1:sq5lqZOUAvOU/CMKiNs6YJmgAbuQ5vwrrBENf2Lg1OU=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dlclark/regexp2 v1.2.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=
