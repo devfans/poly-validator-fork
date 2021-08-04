@@ -255,12 +255,14 @@ func (r *Runner) RunChecks(chans map[uint64]chan *DstTx) error {
 	r.height = height
 	go r.commitChecks() // height rolling
 
-	if r.conf.ChainId == base.POLY || r.conf.ChainId == base.O3 {
-		go r.runSimpleChecks(chans)
-	} else {
+	switch r.conf.ChainId {
+	case base.POLY, base.O3, base.SWITCHEO:
+		go r.runSimpleChecks(chans) // run simple metrics
+	default:
 		go r.runChecks(chans) // scan dst txs
 		go r.run()            // run src checks for dst txs
 	}
+
 	return nil
 }
 
