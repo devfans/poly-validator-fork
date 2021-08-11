@@ -65,7 +65,7 @@ func (v *EthValidator) ScanTxs(height uint64, ch chan tools.CardEvent) (err erro
 			addr := tx.To()
 			if addr != nil {
 				to = strings.ToLower(addr.String())
-				v.trace[to] = fmt.Sprintf("%s->%s", path, to)
+				// v.trace[to] = fmt.Sprintf("%s->%s", path, to)
 			}
 
 			amount := "0"
