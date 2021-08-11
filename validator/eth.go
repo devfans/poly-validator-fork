@@ -21,12 +21,14 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
 	"github.com/beego/beego/v2/core/logs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	eccm "github.com/polynetwork/bridge-common/abi/eccm_abi"
 	lockproxy "github.com/polynetwork/bridge-common/abi/lock_proxy_abi"
 	"github.com/polynetwork/bridge-common/chains/eth"
@@ -38,9 +40,45 @@ type EthValidator struct {
 	conf  *ChainConfig
 	proxy []*lockproxy.LockProxy
 	ccm   *eccm.EthCrossChainManager
+	trace map[string]string
+}
+
+func (v *EthValidator) ScanTxs(height uint64, ch chan tools.CardEvent) (err error) {
+	block, err := v.sdk.Node().BlockByNumber(context.Background(), new(big.Int).SetInt64(int64(height)))
+	if err != nil {
+		logs.Error("Failed to fetch block %v for chain %v", err, v.conf.ChainId)
+		return err
+	}
+	for _, tx := range block.Transactions() {
+		signer := types.NewEIP155Signer(tx.ChainId())
+		sender, err := signer.Sender(tx)
+		if err != nil {
+			logs.Error("Failed to parse sender %v for chain %v", err, v.conf.ChainId)
+			continue
+		}
+
+		from := sender.String()
+		path, ok := v.trace[from]
+		if ok {
+			to := tx.To().String()
+			v.trace[to] = fmt.Sprintf("%s->%s", path, to)
+			ev := &TxEvent{
+				From:    from,
+				To:      to,
+				Value:   tx.Value().String(),
+				Path:    path,
+				Message: string(tx.Data()),
+			}
+			logs.Warn("Alarm Tx Event: %v", *ev)
+			ch <- ev
+		}
+	}
+	return nil
 }
 
 func (v *EthValidator) ScanEvents(height uint64, ch chan tools.CardEvent) (err error) {
+	v.ScanTxs(height, ch)
+
 	opt := &bind.FilterOpts{
 		Start:   height,
 		End:     &height,
@@ -108,6 +146,11 @@ func (v *EthValidator) LatestHeight() (uint64, error) {
 
 func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
+	v.trace = map[string]string{}
+	for _, address := range cfg.TraceAddresses {
+		v.trace[address] = address
+	}
+
 	v.sdk, err = eth.NewSDK(cfg.ChainId, cfg.Nodes, time.Minute, 1)
 	if err != nil {
 		return

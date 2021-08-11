@@ -91,6 +91,23 @@ func (o *BindProxyEvent) Format() (title string, keys []string, values []interfa
 	return
 }
 
+type TxEvent struct {
+	TxHash  string
+	ChainId string
+	From    string
+	To      string
+	Path    string
+	Value   string
+	Message string
+}
+
+func (o *TxEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("TX event on chain %v", o.ChainId)
+	keys = []string{"Hash", "From", "ChainId", "To", "Value", "Message"}
+	values = []interface{}{o.TxHash, o.From, o.ChainId, o.To, o.Value, o.Message}
+	return
+}
+
 type BindAssetEvent struct {
 	TxHash        string
 	Contract      string

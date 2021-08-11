@@ -58,6 +58,7 @@ type ChainConfig struct {
 	ProxyContracts  []string
 	CCMContract     string
 	Nodes           []string
+	TraceAddresses  []string
 }
 
 func (c *ChainConfig) HeightKey() []byte {
