@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	eccm "github.com/polynetwork/bridge-common/abi/eccm_abi"
 	lockproxy "github.com/polynetwork/bridge-common/abi/lock_proxy_abi"
+	"github.com/polynetwork/bridge-common/base"
 	"github.com/polynetwork/bridge-common/chains/eth"
 	"github.com/polynetwork/bridge-common/tools"
 )
@@ -74,10 +75,12 @@ func (v *EthValidator) ScanTxs(height uint64, ch chan tools.CardEvent) (err erro
 			}
 
 			ev := &TxEvent{
+				TxHash:  tx.Hash().String(),
 				From:    from,
 				To:      to,
 				Value:   amount,
 				Path:    path,
+				ChainId: base.GetChainName(v.conf.ChainId),
 				Message: string(tx.Data()),
 			}
 			logs.Warn("Alarm Tx Event: %v", *ev)

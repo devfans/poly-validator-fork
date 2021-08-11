@@ -102,7 +102,7 @@ type TxEvent struct {
 }
 
 func (o *TxEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
-	title = fmt.Sprintf("TX event on chain %v", o.ChainId)
+	title = fmt.Sprintf("Tracking address event on chain %v", o.ChainId)
 	keys = []string{"Hash", "From", "ChainId", "To", "Value", "Message"}
 	values = []interface{}{o.TxHash, o.From, o.ChainId, o.To, o.Value, o.Message}
 	return
