@@ -54,7 +54,7 @@ func (v *EthValidator) ScanTxs(height uint64, ch chan tools.CardEvent) (err erro
 		signer := types.NewEIP155Signer(tx.ChainId())
 		sender, err := signer.Sender(tx)
 		if err != nil {
-			logs.Error("Failed to parse sender %v for chain %v", err, v.conf.ChainId)
+			// logs.Error("Failed to parse sender %v for chain %v", err, v.conf.ChainId)
 			continue
 		}
 
