@@ -57,15 +57,26 @@ func (v *EthValidator) ScanTxs(height uint64, ch chan tools.CardEvent) (err erro
 			continue
 		}
 
-		from := sender.String()
+		from := strings.ToLower(sender.String())
 		path, ok := v.trace[from]
 		if ok {
-			to := tx.To().String()
-			v.trace[to] = fmt.Sprintf("%s->%s", path, to)
+			to := ""
+			addr := tx.To()
+			if addr != nil {
+				to = strings.ToLower(addr.String())
+				v.trace[to] = fmt.Sprintf("%s->%s", path, to)
+			}
+
+			amount := "0"
+			value := tx.Value()
+			if value != nil {
+				amount = value.String()
+			}
+
 			ev := &TxEvent{
 				From:    from,
 				To:      to,
-				Value:   tx.Value().String(),
+				Value:   amount,
 				Path:    path,
 				Message: string(tx.Data()),
 			}
@@ -147,7 +158,8 @@ func (v *EthValidator) LatestHeight() (uint64, error) {
 func (v *EthValidator) Setup(cfg *ChainConfig) (err error) {
 	v.conf = cfg
 	v.trace = map[string]string{}
-	for _, address := range cfg.TraceAddresses {
+	for _, addr := range cfg.TraceAddresses {
+		address := strings.ToLower(addr)
 		v.trace[address] = address
 	}
 
