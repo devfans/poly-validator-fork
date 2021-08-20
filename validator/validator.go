@@ -22,6 +22,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,6 +93,7 @@ type Config struct {
 	Chains          []*ChainConfig
 	MetricHost      string
 	MetricPort      int
+	PauseCCMCommand []string
 }
 
 type DstTx struct {
@@ -561,6 +564,23 @@ type Listener struct {
 	validators map[uint64]*Runner
 	chans      map[uint64]chan *DstTx
 	outputs    chan tools.CardEvent
+	conf       Config
+}
+
+func (l *Listener) handleEvent(o tools.CardEvent) {
+	ev, ok := o.(*InvalidUnlockEvent)
+	if !ok {
+		return
+	}
+	go func() {
+		cmd := exec.Command(l.conf.PauseCCMCommand[0], l.conf.PauseCCMCommand[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stdout
+		err := cmd.Run()
+		if err != nil {
+			logs.Error("Run handle event command error %v %v", err, *ev)
+		}
+	}()
 }
 
 func (l *Listener) watch() {
@@ -572,11 +592,13 @@ func (l *Listener) watch() {
 		if err != nil {
 			logs.Error("Post dingtalk error %s", err)
 		}
+		l.handleEvent(o)
 		time.Sleep(time.Second)
 	}
 }
 
 func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, chain int) (err error) {
+	l.conf = cfg
 	PolyCCMContract = cfg.PolyCCMContract
 	DingUrl = cfg.DingUrl
 
