@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"time"
 )
 
 func ParseInt(value, ty string) (v *big.Int) {
@@ -48,12 +49,12 @@ func HexStringReverse(value string) string {
 	return hex.EncodeToString(bb)
 }
 
-type Output struct {
+type InvalidUnlockEvent struct {
 	*DstTx
 	Error error
 }
 
-func (o *Output) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+func (o *InvalidUnlockEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
 	keys = []string{"Amount", "Asset", "To", "DstChain", "PolyHash", "DstHash", "Error"}
 	values = []interface{}{o.Amount.String(), o.DstAsset, o.To, o.DstChainId, o.PolyTx, o.DstTx.DstTx, o.Error}
 	title = fmt.Sprintf("Suspicious unlock on chain %d", o.DstChainId)
@@ -105,6 +106,20 @@ func (o *TxEvent) Format() (title string, keys []string, values []interface{}, b
 	title = fmt.Sprintf("Tracking address event on chain %v", o.ChainId)
 	keys = []string{"Hash", "From", "ChainId", "To", "Value", "Message"}
 	values = []interface{}{o.TxHash, o.From, o.ChainId, o.To, o.Value, o.Message}
+	return
+}
+
+type ChainHeightStuckEvent struct {
+	Chain         string
+	Duration      time.Duration
+	CurrentHeight uint64
+	Nodes         []string
+}
+
+func (o *ChainHeightStuckEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("Chain node height stopped for %s", o.Chain)
+	keys = []string{"CurrentHeight", "StuckFor", "Nodes"}
+	values = []interface{}{o.CurrentHeight, o.Duration, o.Nodes}
 	return
 }
 

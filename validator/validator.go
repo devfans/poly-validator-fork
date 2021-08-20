@@ -44,21 +44,22 @@ import (
 
 var (
 	BUCKET      = []byte("poly-validator")
-	BLOCK_DEFER = uint64(5)
+	BLOCK_DEFER = uint64(0)
 
 	PolyCCMContract string
 	DingUrl         string
 )
 
 type ChainConfig struct {
-	ChainId         uint64
-	CounterBlocks   int
-	CounterDuration uint64
-	StartHeight     uint64
-	ProxyContracts  []string
-	CCMContract     string
-	Nodes           []string
-	TraceAddresses  []string
+	ChainId              uint64
+	CounterBlocks        int
+	CounterDuration      uint64
+	StartHeight          uint64
+	ProxyContracts       []string
+	CCMContract          string
+	Nodes                []string
+	TraceAddresses       []string
+	HeightReportInterval int64
 }
 
 func (c *ChainConfig) HeightKey() []byte {
@@ -192,6 +193,10 @@ func NewRunner(cfg *ChainConfig, db *bolt.DB, poly *poly.SDK, outputs chan tools
 		cfg.CounterDuration = 60
 	}
 
+	if cfg.HeightReportInterval == 0 {
+		cfg.HeightReportInterval = 60 * 20
+	}
+
 	tps, err := tools.NewTimedCounter(time.Duration(cfg.CounterDuration) * time.Second)
 	if err != nil {
 		return nil, err
@@ -229,7 +234,7 @@ func (r *Runner) run() error {
 		}
 
 		if err != nil {
-			r.outputs <- &Output{DstTx: tx, Error: err}
+			r.outputs <- &InvalidUnlockEvent{DstTx: tx, Error: err}
 		}
 		// Always mark as done so wont stuck here
 		tx.Done()
@@ -308,7 +313,7 @@ func (r *Runner) WaitBlockHeight(height uint64) uint64 {
 			logs.Error("Failed to get latest height for chain %v", r.conf.ChainId)
 		} else {
 			logs.Info("Chain %v latest height %v", r.conf.ChainId, h)
-			if h > height+BLOCK_DEFER {
+			if h >= height+BLOCK_DEFER {
 				return h
 			}
 		}
@@ -434,7 +439,7 @@ func (r *Runner) ScanEvents(height uint64) error {
 }
 
 func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
-	for c := 8; c > 0; c-- {
+	for c := 20; c > 0; c-- {
 		txs, err = r.Validator.Scan(height)
 		if err != nil {
 			return
@@ -458,8 +463,11 @@ func (r *Runner) scan(height uint64) (txs []*DstTx, err error) {
 func (r *Runner) runSimpleChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
+	lastHeightUpdate := time.Now().Unix()
+	reportInterval := r.conf.HeightReportInterval
+
 	for {
-		if latest <= height+BLOCK_DEFER {
+		if latest < height+BLOCK_DEFER {
 			latest = r.WaitBlockHeight(height)
 		}
 		// logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
@@ -475,9 +483,17 @@ func (r *Runner) runSimpleChecks(chans map[uint64]chan *DstTx) {
 			metrics.Record(r.tps.Tps(), "tps.%s", r.Name)
 			metrics.Record(r.counter.BlockTime(), "blocktime.%s", r.Name)
 			height++
+			lastHeightUpdate = time.Now().Unix()
+			reportInterval = r.conf.HeightReportInterval
 			time.Sleep(time.Millisecond)
 		} else {
 			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
+			duration := time.Now().Unix() - lastHeightUpdate
+			if duration > reportInterval {
+				r.outputs <- &ChainHeightStuckEvent{Chain: r.Name, CurrentHeight: height, Duration: time.Duration(duration) * time.Second, Nodes: r.conf.Nodes}
+				reportInterval *= 2
+			}
+
 			time.Sleep(time.Second * 2)
 		}
 	}
@@ -486,8 +502,10 @@ func (r *Runner) runSimpleChecks(chans map[uint64]chan *DstTx) {
 func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 	height := r.height
 	var latest uint64
+	lastHeightUpdate := time.Now().Unix()
+	reportInterval := r.conf.HeightReportInterval
 	for {
-		if latest <= height+BLOCK_DEFER {
+		if latest < height+BLOCK_DEFER {
 			latest = r.WaitBlockHeight(height)
 		}
 		logs.Info("Running scan on chain %v height %v", r.conf.ChainId, height)
@@ -498,11 +516,11 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 				logs.Info("Scan found %d txs in block chain %v height %v", len(txs), r.conf.ChainId, height)
 				for _, tx := range txs {
 					if tx.PolyTx == "" {
-						r.outputs <- &Output{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain %d", tx.DstChainId)}
+						r.outputs <- &InvalidUnlockEvent{DstTx: tx, Error: fmt.Errorf("Invalid poly tx on tx unlock event on chain %d", tx.DstChainId)}
 					} else {
 						err := r.polyCheck(tx)
 						if err != nil {
-							r.outputs <- &Output{DstTx: tx, Error: err}
+							r.outputs <- &InvalidUnlockEvent{DstTx: tx, Error: err}
 						} else {
 							tx.Finish()
 							// tx.Sink(chans)
@@ -521,12 +539,19 @@ func (r *Runner) runChecks(chans map[uint64]chan *DstTx) {
 				metrics.Record(r.counter.BlockTime(), "blocktime.%s", r.Name)
 
 				height++
+				lastHeightUpdate = time.Now().Unix()
+				reportInterval = r.conf.HeightReportInterval
 				time.Sleep(time.Millisecond)
 			}
 		}
 
 		if err != nil {
 			logs.Error("Failed to scan block chain %v height %v err %v", r.conf.ChainId, height, err)
+			duration := time.Now().Unix() - lastHeightUpdate
+			if duration > reportInterval {
+				r.outputs <- &ChainHeightStuckEvent{Chain: r.Name, CurrentHeight: height, Duration: time.Duration(duration) * time.Second, Nodes: r.conf.Nodes}
+				reportInterval *= 2
+			}
 			time.Sleep(time.Second * 2)
 		}
 	}
