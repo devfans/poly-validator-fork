@@ -93,6 +93,7 @@ type Config struct {
 	HuyiUrl         string
 	HuyiAccount     string
 	HuyiPassword    string
+	DialTemplate    string
 	DialTargets     []string
 	PolyCCMContract string
 	Chains          []*ChainConfig
@@ -588,7 +589,7 @@ func (l *Listener) handleEvent(o tools.CardEvent) {
 			logs.Error("Run handle event command error %v %v", err, *ev)
 		}
 	}()
-	go Notify("Suspicious unlock transaction, pausing ECCM contract now, check it as soon as possible!")
+	go Notify(fmt.Sprintf(l.conf.DialTemplate, "Poly", "Invalid Unlock"))
 }
 
 func (l *Listener) watch() {
