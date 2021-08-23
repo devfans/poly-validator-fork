@@ -50,6 +50,7 @@ var (
 
 	PolyCCMContract string
 	DingUrl         string
+	CONFIG          *Config
 )
 
 type ChainConfig struct {
@@ -89,6 +90,10 @@ type Config struct {
 	PolyNodes       []string
 	StartHeight     uint64
 	DingUrl         string
+	HuyiUrl         string
+	HuyiAccount     string
+	HuyiPassword    string
+	DialTargets     []string
 	PolyCCMContract string
 	Chains          []*ChainConfig
 	MetricHost      string
@@ -331,7 +336,7 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 	}
 
 	var raw []byte
-	for c := 10; c > 0; c-- {
+	for c := 30; c > 0; c-- {
 		raw, err = r.poly.Node().GetStorage(utils.CrossChainManagerContractAddress.ToHexString(), k[20:])
 		if err == nil && raw != nil {
 			des := pcom.NewZeroCopySource(raw)
@@ -370,9 +375,11 @@ func (r *Runner) polyMerkleCheck(tx *DstTx, key string) (err error) {
 						value.Cmp(tx.Amount) == 0 {
 						logs.Info("Successfully validated %s | %s | %s \n %s %s %s", tx.SrcTx, tx.PolyTx, tx.DstTx, asset, address, value.String())
 						return
+					} else {
+						err = fmt.Errorf("Diff poly %s dst %s\n amount %s | %s\n to %s | %s\n asset %s | %s\n",
+							tx.PolyTx, tx.DstTx, value.String(), tx.Amount.String(), address, tx.To, asset, tx.DstAsset)
+						break
 					}
-					err = fmt.Errorf("Diff poly %s dst %s\n amount %s | %s\n to %s | %s\n asset %s | %s\n",
-						tx.PolyTx, tx.DstTx, value.String(), tx.Amount.String(), address, tx.To, asset, tx.DstAsset)
 				} else {
 					err = fmt.Errorf("Invalid source chain id in merkle value %v %v", merkleValue.FromChainID, tx.SrcChainId)
 				}
@@ -406,7 +413,7 @@ func (r *Runner) polyTxCheck(tx *DstTx) (err error) {
 
 func (r *Runner) polyCheck(tx *DstTx) (err error) {
 	var event *common.SmartContactEvent
-	for c := 10; c > 0; c-- {
+	for c := 30; c > 0; c-- {
 		event, err = r.poly.Node().GetSmartContractEvent(tx.PolyTx)
 		if err == nil && event != nil {
 			for _, notify := range event.Notify {
@@ -581,6 +588,7 @@ func (l *Listener) handleEvent(o tools.CardEvent) {
 			logs.Error("Run handle event command error %v %v", err, *ev)
 		}
 	}()
+	go Notify("Suspicious unlock transaction, pausing ECCM contract now, check it as soon as possible!")
 }
 
 func (l *Listener) watch() {
@@ -601,6 +609,7 @@ func (l *Listener) Start(cfg Config, ctx context.Context, wg *sync.WaitGroup, ch
 	l.conf = cfg
 	PolyCCMContract = cfg.PolyCCMContract
 	DingUrl = cfg.DingUrl
+	CONFIG = &cfg
 
 	db, err := bolt.Open(".validator.db", 0600, nil)
 	if err != nil {
