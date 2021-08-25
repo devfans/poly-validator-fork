@@ -298,9 +298,9 @@ func (r *Runner) commitChecks() {
 			if h > height && write {
 				write = false
 				height = h
-				err := r.conf.WriteHeight(r.db, r.height)
+				err := r.conf.WriteHeight(r.db, height)
 				if err != nil {
-					logs.Error("Failed to write chain %v height %v , err %v", r.conf.ChainId, r.height, err)
+					logs.Error("Failed to write chain %v height %v , err %v", r.conf.ChainId, height, err)
 				}
 			}
 		}
