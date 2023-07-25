@@ -1,21 +1,4 @@
-/*
- * Copyright (C) 2021 The poly network Authors
- * This file is part of The poly network library.
- *
- * The  poly network  is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The  poly network  is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- * You should have received a copy of the GNU Lesser General Public License
- * along with The poly network .  If not, see <http://www.gnu.org/licenses/>.
- */
-
-package validator
+package msg
 
 import (
 	"encoding/hex"
@@ -24,40 +7,36 @@ import (
 	"time"
 )
 
-func ParseInt(value, ty string) (v *big.Int) {
-	switch ty {
-	case "Integer":
-		v, _ = new(big.Int).SetString(value, 10)
-	default:
-		v, _ = new(big.Int).SetString(HexStringReverse(value), 16)
+type InvalidPolyCommitEvent struct {
+	*Tx
+	Title string
+	Error error
+}
+
+func (o *InvalidPolyCommitEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	keys = []string{"TxID", "DstProxy", "Method", "DstChain", "SrcChain", "PolyHash", "PolyKey", "Error"}
+	var (
+		method, dstProxy string
+	)
+	if o.MerkleValue != nil && o.MerkleValue.MakeTxParam != nil {
+		method = o.MerkleValue.MakeTxParam.Method
+		dstProxy = hex.EncodeToString(o.MerkleValue.MakeTxParam.ToContractAddress)
 	}
+	values = []interface{}{o.TxId, dstProxy, method, o.DstChainId, o.SrcChainId, o.PolyHash, o.PolyKey, o.Error}
+	title = fmt.Sprintf("Suspicious poly commit from chain %d %s", o.SrcChainId, o.Title)
 	return
 }
 
-func HexReverse(arr []byte) []byte {
-	l := len(arr)
-	x := make([]byte, 0)
-	for i := l - 1; i >= 0; i-- {
-		x = append(x, arr[i])
-	}
-	return x
-}
-
-func HexStringReverse(value string) string {
-	aa, _ := hex.DecodeString(value)
-	bb := HexReverse(aa)
-	return hex.EncodeToString(bb)
-}
-
 type InvalidUnlockEvent struct {
-	*DstTx
+	*Tx
+	Title string
 	Error error
 }
 
 func (o *InvalidUnlockEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
-	keys = []string{"Amount", "Asset", "To", "DstChain", "PolyHash", "DstHash", "Error"}
-	values = []interface{}{o.Amount.String(), o.DstAsset, o.To, o.DstChainId, o.PolyTx, o.DstTx.DstTx, o.Error}
-	title = fmt.Sprintf("Suspicious unlock on chain %d", o.DstChainId)
+	keys = []string{"DstProxy", "SrcChain", "DstChain", "PolyHash", "DstHash", "Error"}
+	values = []interface{}{o.DstProxy, o.SrcChainId, o.DstAddress, o.DstChainId, o.PolyHash, o.DstHash, o.Error}
+	title = fmt.Sprintf("Suspicious execute on chain %d %s", o.DstChainId, o.Title)
 	return
 }
 
@@ -139,4 +118,44 @@ func (o *BindAssetEvent) Format() (title string, keys []string, values []interfa
 	keys = []string{"Hash", "Contract", "ChainId", "FromAsset", "ToChainId", "ToAsset", "InitialAmount"}
 	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.FromAsset, o.ToChainId, o.Asset, o.InitialAmount}
 	return
+}
+
+type ChangeOwnerEvent struct {
+	TxHash   string
+	ChainId  uint64
+	PreviousOwner, NewOwner, Contract string
+}
+
+func (o *ChangeOwnerEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
+	title = fmt.Sprintf("Suspicious lockproxy changeOwner event on chain %v", o.ChainId)
+	keys = []string{"Hash", "Contract", "ChainId", "PreviousOwner", "NewOwner"}
+	values = []interface{}{o.TxHash, o.Contract, o.ChainId, o.PreviousOwner, o.NewOwner}
+	return
+}
+
+
+
+func ParseInt(value, ty string) (v *big.Int) {
+	switch ty {
+	case "Integer":
+		v, _ = new(big.Int).SetString(value, 10)
+	default:
+		v, _ = new(big.Int).SetString(HexStringReverse(value), 16)
+	}
+	return
+}
+
+func HexReverse(arr []byte) []byte {
+	l := len(arr)
+	x := make([]byte, 0)
+	for i := l - 1; i >= 0; i-- {
+		x = append(x, arr[i])
+	}
+	return x
+}
+
+func HexStringReverse(value string) string {
+	aa, _ := hex.DecodeString(value)
+	bb := HexReverse(aa)
+	return hex.EncodeToString(bb)
 }
