@@ -603,7 +603,11 @@ func pushTgEvent(url string, event tools.CardEvent) {
 		msg = fmt.Sprintf("%s\n*%s*:  %v", msg, k, values[i])
 	}
 	fmt.Println(msg)
-	pushTelegram(config.CONFIG.Validators.TgUrl, msg)
+	if url == "" {
+		log.Warn("Tg url not configured")
+		return
+	}
+	pushTelegram(url, msg)
 }
 
 func pushTelegram(url, body string) (err error) {
@@ -693,10 +697,10 @@ func watchAlarms(outputs chan tools.CardEvent) {
 		c++
 		handleAlarm(o)
 		fmt.Printf("!!!!!!! Alarm(%v): %s \n", c, util.Json(o))
+		go pushTgEvent(config.CONFIG.Validators.TgUrl, o)
 		if len(tools.DingUrl) == 0 {
 			continue
 		}
-		go pushTgEvent(config.CONFIG.Validators.TgUrl, o)
 		err := tools.PostCardEvent(o)
 		if err != nil {
 			log.Error("Post dingtalk failure", "err", err)
