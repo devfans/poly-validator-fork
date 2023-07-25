@@ -16,7 +16,8 @@ type InvalidPolyCommitEvent struct {
 func (o *InvalidPolyCommitEvent) Format() (title string, keys []string, values []interface{}, buttons []map[string]string) {
 	keys = []string{"TxID", "DstProxy", "Method", "DstChain", "SrcChain", "PolyHash", "PolyKey", "Error"}
 	var (
-		method, dstProxy string
+		method string
+		dstProxy = o.DstProxy
 	)
 	if o.MerkleValue != nil && o.MerkleValue.MakeTxParam != nil {
 		method = o.MerkleValue.MakeTxParam.Method
