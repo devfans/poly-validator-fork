@@ -692,6 +692,13 @@ func Validate(ctx *cli.Context) (err error) {
 }
 
 func watchAlarms(outputs chan tools.CardEvent) {
+	go func() {
+		for {
+			pushTelegram(config.CONFIG.Validators.TgUrl, "PolyMonitor Online Check!")
+			time.Sleep(time.Hour * 24)
+		}
+	} ()
+
 	c := 0
 	for o := range outputs {
 		c++
