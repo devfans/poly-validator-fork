@@ -2,7 +2,7 @@ GC=go build
 COMMIT ?= main
 
 poly-validator: $(SRC_FILES)
-	$(GC) -o poly-validator main.go
+	$(GC)  -tags mainnet -o poly-validator main.go
 
 clean:
 	rm -f poly-validator
