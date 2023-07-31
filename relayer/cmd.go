@@ -391,7 +391,9 @@ func SetTxSyncHeight(ctx *cli.Context) (err error) {
 func SetTxValidatorHeight(ctx *cli.Context) (err error) {
 	height := uint64(ctx.Int("height"))
 	chain := uint64(ctx.Int("chain"))
-	return NewStatusHandler(config.CONFIG.Bus.Redis).SetHeight(chain, bus.KEY_HEIGHT_VALIDATOR, height)
+	config.PROC_ID = ctx.Int("id")
+	heightKey := bus.ChainHeightType(fmt.Sprintf("%s_%v", bus.KEY_HEIGHT_VALIDATOR, config.PROC_ID))
+	return NewStatusHandler(config.CONFIG.Bus.Redis).SetHeight(chain, heightKey, height)
 }
 
 func Skip(ctx *cli.Context) (err error) {
