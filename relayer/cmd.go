@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -725,6 +726,7 @@ func ShouldPauseForEvent(o tools.CardEvent) bool {
 	switch ev := o.(type) {
 	case *msg.InvalidUnlockEvent:
 		if ev.Error == nil { return false }
+		if errors.Is(ev.Error, msg.ERR_TX_VOILATION) { return true }
 		err := ev.Error.Error()
 		for _, token := range invalidNodeKeys {
 			if strings.Contains(err, token) {
@@ -736,6 +738,7 @@ func ShouldPauseForEvent(o tools.CardEvent) bool {
 		}
 	case *msg.InvalidPolyCommitEvent:
 		if ev.Error == nil { return false }
+		if errors.Is(ev.Error, msg.ERR_TX_VOILATION) { return true }
 		err := ev.Error.Error()
 		for _, token := range invalidNodeKeys {
 			if strings.Contains(err, token) {
