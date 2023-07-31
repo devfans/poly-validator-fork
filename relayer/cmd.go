@@ -722,7 +722,7 @@ func watchAlarms(outputs chan tools.CardEvent) {
 
 func ShouldPauseForEvent(o tools.CardEvent) bool {
 	pause := true
-	invalidNodeKeys := []string {"</html>", "timed out", "refused", "limit", "404", "400", "500", "503", "nauthorized", "No height increment", "call storage failure"}
+	invalidNodeKeys := []string {"</html>", "timed out", "refused", "limit", "enied", "ermission", "nauthorized", "No height increment", "call storage failure"}
 	switch ev := o.(type) {
 	case *msg.InvalidUnlockEvent:
 		if ev.Error == nil { return false }
