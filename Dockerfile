@@ -1,6 +1,6 @@
 FROM golang:1.20-bullseye
 
-ARG commit=master
+ARG commit=main
 
 WORKDIR /workspace
 

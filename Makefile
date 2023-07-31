@@ -1,5 +1,5 @@
 GC=go build
-COMMIT ?= master
+COMMIT ?= main
 
 poly-validator: $(SRC_FILES)
 	$(GC) -o poly-validator main.go
