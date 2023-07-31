@@ -53,7 +53,9 @@ func (v *Validator) start() (err error) {
 	chainID := v.listener.ChainId()
 	log.Info("Starting validator for events", "chain", chainID)
 	status := NewStatusHandler(config.CONFIG.Bus.Redis)
-	height, _ := status.Height(chainID, bus.KEY_HEIGHT_VALIDATOR)
+
+	heightKey := bus.ChainHeightType(fmt.Sprintf("%s_%v", bus.KEY_HEIGHT_VALIDATOR, config.PROC_ID))
+	height, _ := status.Height(chainID, bus.ChainHeightType(heightKey))
 	if height == 0 {
 		height, err = v.listener.LatestHeight()
 		if err != nil {
@@ -116,7 +118,7 @@ func (v *Validator) start() (err error) {
 				}
 			}
 			if height % 100 == 0 {
-				status.SetHeight(chainID, bus.KEY_HEIGHT_VALIDATOR, height)
+				status.SetHeight(chainID, heightKey, height)
 			}
 			if listener != nil {
 				// Scan proxy events

@@ -114,6 +114,13 @@ func main() {
 				Name:   relayer.VALIDATE,
 				Usage:  "Validate txs",
 				Action: command(relayer.VALIDATE),
+				Flags: []cli.Flag{
+					&cli.Int64Flag{
+						Name:     "id",
+						Usage:    "process id",
+						Required: true,
+					},
+				},
 			},
 			&cli.Command{
 				Name:   relayer.VALIDATE_BLOCK,

@@ -633,6 +633,8 @@ func pushTelegram(url, body string) (err error) {
 }
 
 func Validate(ctx *cli.Context) (err error) {
+	config.PROC_ID = ctx.Int("id")
+
 	pl, err := PolyListener()
 	if err != nil { return }
 	listeners := make(map[uint64]*eth.Listener)

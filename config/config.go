@@ -40,6 +40,7 @@ var (
 	CONFIG_PATH string
 	ENCRYPTED   bool
 	PLAIN       bool
+	PROC_ID     int
 )
 
 type Config struct {
