@@ -152,6 +152,11 @@ func main() {
 						Usage:    "target chain",
 						Required: true,
 					},
+					&cli.Int64Flag{
+						Name:     "id",
+						Usage:    "process id",
+						Required: true,
+					},
 				},
 			},
 			&cli.Command{
