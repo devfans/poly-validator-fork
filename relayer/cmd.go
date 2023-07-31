@@ -565,6 +565,9 @@ func ValidateBlock(ctx *cli.Context) (err error) {
 		}
 		txs, err := lis.ScanDst(height)
 		if err != nil { return err }
+		if len(txs) == 0 {
+			log.Info("Scan found 0 txs in block", "height", height, "chain", chain)
+		}
 		for i, tx := range txs {
 			err = pl.Validate(tx)
 			log.Info("Validating tx", "index", i, "err", err)
